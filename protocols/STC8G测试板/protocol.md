@@ -8,7 +8,7 @@
 - 芯片：**STC8G1K08A-8PIN**（8KB flash / 4KB EEPROM）
 - 串口：CH340（USB 转串口），115200 8N1
 - 固有 ID：`F794C57C155D3F`（BSL 版本 7.3.13U）
-- 工程源码：`E:\DSHwork\Embedded study\stc8g-lab`
+- 工程源码：`E:\DSHwork\whalesong\stc8g-lab`
 
 ### 接线（8 脚全用）
 
@@ -156,7 +156,7 @@ EA = 1;
 STC 用**冷启动**下载，不需要 ST-Link：
 
 ```bash
-cd "E:\DSHwork\Embedded study\stc8g-lab"
+cd "E:\DSHwork\whalesong\stc8g-lab"
 python flash.py --com COM7
 ```
 

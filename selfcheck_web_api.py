@@ -52,6 +52,7 @@ except Exception:
 
 PASS = []
 FAIL = []
+SKIP = []
 
 
 def check(name, cond, detail=""):
@@ -62,6 +63,17 @@ def check(name, cond, detail=""):
         FAIL.append("%s %s" % (name, detail))
         print("  FAIL %s %s" % (name, detail))
     return bool(cond)
+
+
+def skip(name, reason=""):
+    """环境不具备（比如没插设备）时用它，**不算失败**。
+
+    为什么要区分：没插板子时 /autodetect 必然 400，
+    如果记成 FAIL，自检就会在"环境问题"上长期报红，久了没人看。
+    真正的失败必须是"代码不对"，不是"设备不在"。
+    """
+    SKIP.append("%s %s" % (name, reason))
+    print("  SKIP %s %s" % (name, reason))
 
 
 # ── HTTP 小工具 ──────────────────────────────────────────────────────────────
@@ -315,26 +327,35 @@ def run_checks(base, original):
           data is not None and data.get("ok") is not True, str(data)[:120])
 
     # 12. /autodetect —— 应给出端口 + 理由
+    #     没有真设备时这里必然 400（no_device）：那是环境问题，不是代码问题。
+    #     记成 SKIP，否则"没插板子"会长期显示成"自检失败"。
     status, text = http_post(base, "/autodetect", {})
     data = as_json(text)
-    check("POST /autodetect  返回 200", status == 200, "status=%s" % status)
-    check("POST /autodetect  是 JSON", data is not None, text[:120])
-    if data and data.get("ok"):
-        check("POST /autodetect  有 port", bool(data.get("port")), str(data)[:120])
-        check("POST /autodetect  有 reason", bool(data.get("reason")), str(data)[:120])
+    no_device = status != 200 and err_kind(data) in ("no_device", "scene_missing",
+                                                      "ambiguous_device")
+    if no_device:
+        skip("POST /autodetect", "当前没有可用串口设备（%s）" % err_kind(data))
+        skip("POST /reconnect", "同上：没有设备可连")
+        data2 = None
+    else:
+        check("POST /autodetect  返回 200", status == 200, "status=%s" % status)
+        check("POST /autodetect  是 JSON", data is not None, text[:120])
+        if data and data.get("ok"):
+            check("POST /autodetect  有 port", bool(data.get("port")), str(data)[:120])
+            check("POST /autodetect  有 reason", bool(data.get("reason")), str(data)[:120])
 
-    # 13. /reconnect 连当前口 —— light 模式**不该真开串口**
-    #     注意：这条只有在"端口真被别人占着"时才有鉴别力。
-    #     端口空闲时，即使 bug 还在（light 模式去 open 一下）也会通过。
-    #     所以要真的验证它，得用 SB_WEB_API_HOLD_PORT=1 跑严格模式（见第 13b 条）。
-    status, text = http_post(base, "/reconnect",
-                             {"com": data.get("port") if data else "",
-                              "baud": 115200})
-    data2 = as_json(text)
-    check("POST /reconnect  返回 200", status == 200, "status=%s" % status)
-    check("POST /reconnect  是 JSON", data2 is not None, text[:120])
-    check("POST /reconnect  light 模式不报被占用",
-          data2 is not None and data2.get("ok") is True, str(data2)[:150])
+        # 13. /reconnect 连当前口 —— light 模式**不该真开串口**
+        #     注意：这条只有在"端口真被别人占着"时才有鉴别力。
+        #     端口空闲时，即使 bug 还在（light 模式去 open 一下）也会通过。
+        #     所以要真的验证它，得用 SB_WEB_API_HOLD_PORT=1 跑严格模式（见第 13b 条）。
+        status, text = http_post(base, "/reconnect",
+                                 {"com": data.get("port") if data else "",
+                                  "baud": 115200})
+        data2 = as_json(text)
+        check("POST /reconnect  返回 200", status == 200, "status=%s" % status)
+        check("POST /reconnect  是 JSON", data2 is not None, text[:120])
+        check("POST /reconnect  light 模式不报被占用",
+              data2 is not None and data2.get("ok") is True, str(data2)[:150])
 
     # 13b. 严格模式：自己先把串口占住，再让 light 模式 reconnect。
     #      真正的 bug（light 模式 open 一下做"验证"）会在这里暴露成"被占用"。
@@ -539,13 +560,18 @@ def restore(base, control, watch):
 
 def summary():
     print("\n" + "=" * 70)
-    print("PASS %d / FAIL %d" % (len(PASS), len(FAIL)))
+    print("PASS %d / FAIL %d%s" % (len(PASS), len(FAIL),
+                                   ("  (SKIP %d)" % len(SKIP)) if SKIP else ""))
+    if SKIP:
+        print("\n跳过项（环境不具备，不算失败）：")
+        for item in SKIP:
+            print("  · " + item)
     if FAIL:
         print("\n失败项：")
         for item in FAIL:
             print("  · " + item)
     else:
-        print("全部通过 ✅")
+        print("全部通过 ✅" if not SKIP else "通过（有跳过项）✅")
     print("=" * 70)
     return 0 if not FAIL else 1
 
