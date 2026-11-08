@@ -297,28 +297,34 @@ import { pollChannel } from './js/channel.js';
   // 也能各自看到同样的事件。以前 /poll 取走即清空，谁先轮询谁拿到。
   var frameCursor = 0;
 
+  // 把一次 /poll 的结果画出来并推进游标。tick 和「读一次」共用一份，
+  // 免得两处各写一遍、后来只改了一处（这类"一半对一半错"最费排查时间）。
+  function applyPoll(data) {
+    if (!data.ok) return;
+    if (typeof data.cursor === 'number' && data.cursor > frameCursor) {
+      frameCursor = data.cursor;
+    }
+    // 自动发送 / AI 发起的每一帧：先打来源+命令，再打回显（来源映射见 WHO）
+    (data.frames || []).forEach(function (f) {
+      appendTx(f.source || 'auto', f.tx);
+      if (dispMode === 'hex') {
+        if (f.hex) append(f.hex + '\n');
+      } else if (f.rx) {
+        append(f.rx);
+      }
+    });
+    if (dispMode === 'hex') {
+      if (data.rx_hex) append(data.rx_hex + '\n');
+    } else if (data.rx_text) {
+      append(data.rx_text);
+    }
+  }
+
   function tick() {
     api('/status').then(function (data) {
       if (data.ok) renderStatus(data);
     });
-    api('/poll?since=' + frameCursor).then(function (data) {
-      if (!data.ok) return;
-      if (typeof data.cursor === 'number') frameCursor = data.cursor;
-      // 自动发送 / AI 发起的每一帧：先打来源+命令，再打回显（来源映射见 WHO）
-      (data.frames || []).forEach(function (f) {
-        appendTx(f.source || 'auto', f.tx);
-        if (dispMode === 'hex') {
-          if (f.hex) append(f.hex + '\n');
-        } else if (f.rx) {
-          append(f.rx);
-        }
-      });
-      if (dispMode === 'hex') {
-        if (data.rx_hex) append(data.rx_hex + '\n');
-      } else if (data.rx_text) {
-        append(data.rx_text);
-      }
-    });
+    api('/poll?since=' + frameCursor).then(applyPoll);
   }
 
   function startPolling() {
@@ -470,12 +476,14 @@ import { pollChannel } from './js/channel.js';
 
   $('sendBtn').addEventListener('click', send);
 
-  // 轻模式默认不主动读串口（保证不占口），需要时手动读一帧
+  // 轻模式默认不主动读串口（保证不占口），需要时手动读一帧。
+  // 1.17 的尾巴：这里以前是 `/poll?force=1`（不带 since = 取走语义），
+  // 点一下就把攒着的帧抢走了，另一个标签/测试脚本再也看不到那几行。
+  // 现在和 tick 一样带游标读，force 只表示"额外真读一次串口"。
   $('btnReadOnce').addEventListener('click', function () {
-    api('/poll?force=1').then(function (data) {
+    api('/poll?force=1&since=' + frameCursor).then(function (data) {
       if (!data.ok) { pushEvent('bad', '读取失败：' + errText(data.error)); return; }
-      if (data.rx_text) append(data.rx_text);
-      else if (data.rx_hex && dispMode === 'hex') append(data.rx_hex + '\n');
+      applyPoll(data);
       pushEvent('', '手动读取一帧（' + (data.bytes || 0) + ' 字节）');
     });
   });

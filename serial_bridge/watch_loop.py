@@ -172,6 +172,11 @@ class WatchLoop(object):
         frame = {
             "tx": tx, "rx": rx, "hex": rx_hex,
             "bytes": int(nbytes or 0), "ts": time.time(), "source": source,
+            # 统一字段，两种模式都有：
+            #   轻模式 = 同步收发，回显已经在这一帧里 → False；
+            #   监视模式 = 回显走读线程，先标 True，取到后再补（见 send_raw）。
+            # 以前只有监视模式带这个键，读 /poll 的人得先判断键在不在。
+            "rx_pending": False,
         }
         with self.lock:
             self.auto_frames.append(frame)

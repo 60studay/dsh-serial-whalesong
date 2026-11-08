@@ -134,6 +134,26 @@ def main():
         again = srv.poll()
         check("取走后不重复投递", not (again.get("frames") or []), again)
 
+        print("\n[2c] 帧字段统一：轻模式的帧也带 rx_pending")
+        srv.loop._push_frame("P", "OK\n", "4F 4B", 2, "auto")
+        frames = srv.loop.read_frames(0)
+        check("轻模式帧里一定有 rx_pending 键",
+              bool(frames) and all("rx_pending" in f for f in frames), frames[:1])
+        check("轻模式 rx_pending 恒为 False（同步收发，回显已经在这帧里）",
+              all(f.get("rx_pending") is False for f in frames), frames[:1])
+
+        print("\n[2d] 「读一次」不再抢帧（1.17 的尾巴 1）")
+        srv.loop.take_frames()                 # 清掉旧帧，下面只造 2 条
+        srv.loop._push_frame("A", "OK A\n", "4F 4B", 2, "auto")
+        srv.loop._push_frame("B", "OK B\n", "4F 4B", 2, "auto")
+        before_drain = calls["drain"]
+        once = srv.poll(force=True, since=0)
+        check("force+since 仍然真读了一次串口", calls["drain"] == before_drain + 1,
+              "drain %d -> %d" % (before_drain, calls["drain"]))
+        check("force+since 顺手把这批帧也带回来", len(once.get("frames") or []) >= 2, once)
+        left = srv.poll(since=0).get("frames") or []
+        check("另一个看客（since=0）仍然看得到这两帧", len(left) >= 2, len(left))
+
         print("\n[3] watch_running 语义：开启即 true，关闭即 false")
         srv.state.update(watch={"send_enabled": False, "command": "P", "interval_ms": 300})
         time.sleep(0.4)
@@ -144,6 +164,24 @@ def main():
         check("关闭时 watch_running=false", st_off["watch_running"] is False, st_off["watch_running"])
         check("开启时 watch_running=true", st_on["watch_running"] is True, st_on["watch_running"])
         check("轻模式下 port_held 始终 false", st_on["port_held"] is False)
+
+        print("\n[3b] 关 → 开要清零统计（1.8 的尾巴 3）")
+        srv.autosend_stats["sent"] = 99
+        srv.autosend_stats["skipped"] = 7
+        srv.autosend_stats["avg_gap_ms"] = 123
+        srv.state.update(watch={"send_enabled": False})
+        time.sleep(0.3)
+        srv.set_watch({"send_enabled": True})
+        st = srv.status()
+        check("关→开：已发/漏发/平均间隔全从 0 开始",
+              st["sent_count"] <= 1 and st["sent_skipped"] == 0 and st["avg_gap_ms"] == 0,
+              "%s/%s/%s" % (st["sent_count"], st["sent_skipped"], st["avg_gap_ms"]))
+        time.sleep(1.0)
+        n_sent = srv.autosend_stats["sent"]
+        srv.set_watch({"interval_ms": 400})
+        check("开着的状态下改参数不清零（只有真的从关到开才清）",
+              srv.autosend_stats["sent"] >= n_sent,
+              "%s -> %s" % (n_sent, srv.autosend_stats["sent"]))
 
         print("\n[4] paused 时不发送")
         srv.state.force_state("paused", "test", "暂停")

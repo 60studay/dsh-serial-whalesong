@@ -120,9 +120,12 @@ class StatusMixin(object):
         if since is not None:
             # 游标模式：不消费，谁轮询都不影响别人
             frames = self.loop.read_frames(since)
-            data = self.loop.take()
+            # 「读一次」也走游标模式（页面统一带 since），所以这里要额外保护：
+            # 手动读一帧**不能**顺手把监视模式 buffer 里的字节取走，
+            # 否则另一个标签下一次 /poll 就少了这几个字节（比抢帧更难查）。
+            data = b"" if force else self.loop.take()
             cursor = max([float(f.get("ts") or 0) for f in frames] or [float(since or 0)])
-            return {
+            result = {
                 "ok": True,
                 "frames": frames,
                 "cursor": cursor,
@@ -130,6 +133,7 @@ class StatusMixin(object):
                 "rx_hex": " ".join("%02X" % b for b in data),
                 "bytes": len(data),
             }
+            return self._finish_poll(result, force)
 
         frames = self.loop.take_frames()
         data = self.loop.take()
@@ -145,9 +149,21 @@ class StatusMixin(object):
         # 早先这里每 700ms 临时开口读一次（每次最多等 1500ms 首字节），
         # 结果网页开着的时候串口几乎一直被占着——外部程序和 AI 都打不开（Bug 5）。
         # 现在只有用户手动点「读一次」(force) 才真正开口。
+        result = {"ok": True, "rx_text": "", "rx_hex": "", "bytes": 0}
         if not force:
-            return {"ok": True, "rx_text": "", "rx_hex": "", "bytes": 0,
-                    "skipped": "轻模式不主动读串口（点「读一次」可临时读一帧）"}
+            result["skipped"] = "轻模式不主动读串口（点「读一次」可临时读一帧）"
+        return self._finish_poll(result, force)
+
+
+    def _finish_poll(self, result, force):
+        """手动「读一次」的收尾：真开口 drain 一帧，**只往结果里加，不取走别人的帧**。
+
+        1.17 的尾巴：以前 force 分支排在 `take_frames()` 之后，点一下「读一次」
+        就顺手把 auto_frames 取走了，另一个标签/测试脚本再也看不到那几帧。
+        现在帧永远按游标读，force 只负责"额外读一次串口"。
+        """
+        if not force:
+            return result
         try:
             resolved = self.current_device()
             with self.loop.port_lock:
@@ -156,12 +172,13 @@ class StatusMixin(object):
             return {"ok": False, "error": exc.to_dict()}
         if out["rx_text"]:
             self.logger.append("RX", out["rx_text"])
-        return {
-            "ok": True,
+        result.update({
             "rx_text": out["rx_text"],
             "rx_hex": out["rx_hex"],
             "bytes": out["bytes"],
-        }
+            "manual_read": True,
+        })
+        return result
 
 
     def alerts(self, limit):

@@ -203,6 +203,7 @@ class SerialMixin(object):
     def set_watch(self, body):
         current = self.state.read()
         merged = dict(current.get("watch") or {})
+        was_enabled = bool(merged.get("send_enabled"))
         allowed_keys = {
             "send_enabled", "check_enabled", "check_source", "command",
             "interval_ms", "timeout_ms", "command_mode",
@@ -226,4 +227,16 @@ class SerialMixin(object):
                 continue
             merged[key] = value
         self.state.update(watch=merged)
+        # 关 → 开 = 新一轮：统计从头算。
+        # 以前 sent_count 跨启停累计不清零，"已发 37 次"里混着上一轮的次数，
+        # 用户根本没法用它判断这一轮到底发了多少（1.8 的尾巴）。
+        # 只在"真的从关到开"时清；开着的状态下改间隔/命令不清。
+        if merged.get("send_enabled") and not was_enabled:
+            stats = self.autosend_stats
+            stats["sent"] = 0
+            stats["skipped"] = 0
+            stats["avg_gap_ms"] = 0
+            stats["errors"] = 0
+            stats["last_error"] = ""
+            stats["last_tx"] = 0.0
         return {"ok": True, "watch": merged}
