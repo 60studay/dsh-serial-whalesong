@@ -85,6 +85,8 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         self._manual_until = 0.0
         # 定时发送（独立于串口占用/模式，见 _autosend_loop）
         self._autosend_thread = None
+        # 轻模式定时期间是否正握着串口（1.8 尾巴：避免每轮 open/close 的 DTR 脉冲）
+        self._autosend_hold = False
         self.autosend_stats = {"sent": 0, "errors": 0, "last_error": "", "last_tx": 0.0}
         # 单实例守卫：同一场景同时只允许一个网页实例，避免两个进程抢串口
         self._instance_file = os.path.join(paths["runtime_root"], "state",
@@ -167,6 +169,37 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         }
 
 
+    def _sync_autosend_hold(self, enabled):
+        """轻模式定时发送期间把串口**一直握着**（1.8 的尾巴）。
+
+        以前每一轮都是 open → write → 等回显 → close：CH340 每次打开都会拉一下
+        DTR/RTS，对接着复位电路的板子等于**每 500ms 复位一次**。节奏是对的，
+        但对硬件不友好。
+
+        三条边界：
+          · 只在**轻模式**这么做（监视模式本来就握着口，不重复动）
+          · 握不住（口被别的程序占着）就退回"每轮开关"，只记一条日志，不让定时挂掉
+          · 关掉定时就立刻还口
+        """
+        if not enabled:
+            if self._autosend_hold:
+                if self.mode == "light" and self.loop.running:
+                    self.loop.stop()
+                self._autosend_hold = False
+            return
+        if self.mode != "light" or self.loop.running:
+            return                      # 监视模式 / 已经握着：不用管
+        try:
+            resolved = self.current_device()
+            self.loop.start(resolved["device"],
+                            int(self.effective_cfg().get("baud") or 115200))
+            self._autosend_hold = True
+            self.logger.append("WATCH", "定时期间保持 %s 打开（避免每轮 DTR/RTS 脉冲）"
+                               % resolved["device"])
+        except BridgeError as exc:
+            self._autosend_hold = False
+            self.logger.append("WATCH", "定时期间没能保持端口：%s（退回每轮开关）" % exc.message)
+
     def _autosend_loop(self):
         """定时发送：独立于模式、独立于串口占用。
 
@@ -191,6 +224,7 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
                 current = self.state.read()
                 watch = current.get("watch") or {}
                 enabled = bool(watch.get("send_enabled"))
+                self._sync_autosend_hold(enabled)
                 command = str(watch.get("command") or "").strip()
                 interval = max(0.2, float(watch.get("interval_ms") or 1000) / 1000.0)
                 control = current.get("state") or "human"

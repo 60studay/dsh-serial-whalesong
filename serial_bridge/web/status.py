@@ -173,6 +173,11 @@ class StatusMixin(object):
         """
         if not force:
             return result
+        if getattr(self.loop, "running", False):
+            # 定时/监视正握着口：再开一次只会报"被占用"（还是自己占的），说清楚更省事
+            result["manual_read"] = False
+            result["note"] = "端口正被定时发送/监视模式占着，读不到；先关掉定时再读。"
+            return result
         try:
             resolved = self.current_device()
             with self.loop.port_lock:
