@@ -218,7 +218,7 @@
 <!-- 外观弹窗（2.2）：背景图 / 面板透明度 / 侧栏底色与图 / 主色。
      全部只落到 CSS 变量上；值存在运行期状态（不进 config、不进仓库）。 -->
 <div id="themeModal" class="modal">
-  <div class="modal-box">
+  <div class="modal-box" style="max-height:80vh;overflow-y:auto">
     <h3>外观</h3>
     <div class="hint">只改这一台的样子；「恢复默认」一键回原样。</div>
     <div class="field">
@@ -234,9 +234,38 @@
       <input type="range" id="themeAlpha" min="0" max="100" step="5" value="100">
     </div>
     <div class="field">
-      <span>面板不透明度（收发区 / 状态轨道 / 输入框）</span>
+      <span>文字颜色</span>
+      <div class="row">
+        <input type="color" id="themeFg" value="#d4d4d4" style="flex:0 0 44px">
+        <button class="ghost" id="btnResetFg" style="flex:1" title="回到主题自带的中性色">用默认</button>
+      </div>
+    </div>
+    <div class="field">
+      <span>面板不透明度（三个窗口一起调）</span>
       <input type="range" id="themePanel" min="0" max="100" step="5" value="100">
     </div>
+    <div class="field">
+      <span>状态轨道：颜色 / 不透明度</span>
+      <div class="row">
+        <input type="color" id="themeTimeline" value="#252526" style="flex:0 0 44px">
+        <input type="range" id="themeTimelineA" min="0" max="100" step="5" value="100" style="flex:1">
+      </div>
+    </div>
+    <div class="field">
+      <span>串口收发窗口：颜色 / 不透明度</span>
+      <div class="row">
+        <input type="color" id="themeConsole" value="#252526" style="flex:0 0 44px">
+        <input type="range" id="themeConsoleA" min="0" max="100" step="5" value="100" style="flex:1">
+      </div>
+    </div>
+    <div class="field">
+      <span>输入指令窗口：颜色 / 不透明度</span>
+      <div class="row">
+        <input type="color" id="themeComposer" value="#252526" style="flex:0 0 44px">
+        <input type="range" id="themeComposerA" min="0" max="100" step="5" value="100" style="flex:1">
+      </div>
+    </div>
+    <div class="hint">三个窗口的「颜色/不透明度」不碰就跟随上面的统一设置；想单独调就动它们。</div>
     <div class="field">
       <span>侧栏背景图</span>
       <div class="row">

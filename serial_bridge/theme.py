@@ -38,6 +38,12 @@ DEFAULTS = {
     "side_alpha": 1.0,   # 侧栏不透明度
     # 给别人留的口子：任意 CSS 变量（形状见下面 EXTRA_* 的约束）。
     # 我们的那几项只是"官方选择题"，想彻底自定义的人用这个 + /theme/custom.css。
+    # 文字颜色（用户 19:2x："官方选项里也要能改字体颜色"）
+    "fg_color": "",
+    # 三个窗口各自的外观：空串 = 跟随 --panel / --panel-alpha（"没选过"就是继承）
+    "timeline_color": "", "timeline_alpha": "",
+    "console_color": "", "console_alpha": "",
+    "composer_color": "", "composer_alpha": "",
     "extra": {},
 }
 
@@ -77,6 +83,19 @@ def read_theme(paths):
             pass
     if isinstance(raw.get("side_image"), str):
         data["side_image"] = raw["side_image"]
+    if isinstance(raw.get("fg_color"), str) and _HEX_RE.match(raw["fg_color"].strip()):
+        data["fg_color"] = raw["fg_color"].strip()
+    for key in ("timeline_color", "console_color", "composer_color"):
+        value = raw.get(key)
+        if isinstance(value, str) and _HEX_RE.match(value.strip()):
+            data[key] = value.strip()
+    for key in ("timeline_alpha", "console_alpha", "composer_alpha"):
+        value = raw.get(key)
+        try:
+            if value not in (None, ""):
+                data[key] = max(0.0, min(1.0, float(value)))
+        except (TypeError, ValueError):
+            pass
     if isinstance(raw.get("side_color"), str) and _HEX_RE.match(raw["side_color"].strip()):
         data["side_color"] = raw["side_color"].strip()
     extra = raw.get("extra")
@@ -108,6 +127,10 @@ def write_theme(paths, patch):
             merged["accent"] = _check_accent(value)
         elif key == "side_color":
             merged["side_color"] = _check_accent(value, "side_color")
+        elif key in ("fg_color", "timeline_color", "console_color", "composer_color"):
+            merged[key] = _check_accent(value, key)
+        elif key in ("timeline_alpha", "console_alpha", "composer_alpha"):
+            merged[key] = _check_alpha_or_inherit(value, key)
         else:
             merged["extra"] = _check_extra(value)
 
@@ -286,3 +309,13 @@ def custom_css_path(paths):
     """
     path = os.path.join(theme_dir(paths), "custom.css")
     return path if os.path.isfile(path) else None
+
+
+def _check_alpha_or_inherit(value, key="alpha"):
+    """透明度：0~1（也收 0~100），**空串表示"跟随面板统一设置"**。
+
+    空串不是"0"，是"没选过" —— 页面上会把变量撤掉，让它回落到 --panel-alpha。
+    """
+    if value is None or str(value).strip() == "":
+        return ""
+    return _check_alpha(value, key)

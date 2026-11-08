@@ -71,6 +71,13 @@
     --logo: currentColor;
     /* 外观（2.2）用户可调：面板不透明度 / 侧栏底色与图 */
     --panel-alpha: 1;
+    /* 三个窗口各自的覆盖（空 = 继承 --panel / --panel-alpha） */
+    --timeline-color: var(--panel);
+    --timeline-alpha: var(--panel-alpha);
+    --console-color: var(--panel);
+    --console-alpha: var(--panel-alpha);
+    --composer-color: var(--panel);
+    --composer-alpha: var(--panel-alpha);
     --side-image: none;
     --side-color: var(--bg);
     --side-alpha: 1;
@@ -133,6 +140,23 @@
     background-color: var(--panel);
     background-color: color-mix(in srgb,
       var(--panel) calc(var(--panel-alpha) * 100%), transparent);
+  }
+  /* 三个窗口可以各自改底色和透明度（用户 19:2x："状态轨道/收发区/输入框能不能单独选"）。
+     变量没设时它们的默认值就是 --panel / --panel-alpha，所以"不动"等于"跟随"。 */
+  #timeline {
+    background-color: var(--timeline-color);
+    background-color: color-mix(in srgb,
+      var(--timeline-color) calc(var(--timeline-alpha) * 100%), transparent);
+  }
+  #console {
+    background-color: var(--console-color);
+    background-color: color-mix(in srgb,
+      var(--console-color) calc(var(--console-alpha) * 100%), transparent);
+  }
+  .composer textarea {
+    background-color: var(--composer-color);
+    background-color: color-mix(in srgb,
+      var(--composer-color) calc(var(--composer-alpha) * 100%), transparent);
   }
   /* 侧栏底色的透明度同理（图不受影响） */
   aside {

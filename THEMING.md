@@ -35,6 +35,10 @@
   "theme": {
     "bg_image": "", "bg_alpha": 1.0, "accent": "",
     "panel_alpha": 1.0, "side_image": "", "side_color": "", "side_alpha": 1.0,
+    "fg_color": "",
+    "timeline_color": "", "timeline_alpha": "",
+    "console_color": "", "console_alpha": "",
+    "composer_color": "", "composer_alpha": "",
     "extra": {}
   },
   "tokens": ["--bg", "--panel", "--fg", "..."]
@@ -59,6 +63,9 @@
 | `bg_image` / `side_image` | `http(s)://…`、`data:image/…`、`/theme/image/…` | `javascript:` 等一切别的前缀 |
 | `bg_alpha` / `panel_alpha` / `side_alpha` | `0~1`，也收 `0~100`（当百分数） | 非数字、越界 |
 | `accent` / `side_color` | `#rgb` / `#rrggbb`，或空串（回默认） | 其它写法 |
+| `fg_color` | 文字颜色 `#rgb/#rrggbb`，或空串（回默认） | 其它写法 |
+| `timeline_color` / `console_color` / `composer_color` | 同上，**空串 = 跟随面板统一色** | 其它写法 |
+| `timeline_alpha` / `console_alpha` / `composer_alpha` | `0~1` 或 `0~100`，**空串 = 跟随 `panel_alpha`** | 非数字、越界 |
 | `extra` | `--kebab-case` 变量名 → 字符串值；≤64 个，值 ≤300 字符 | 名字不像变量、值里有花括号/换行 |
 
 ### `POST /theme/image?name=你的文件名.png`
@@ -119,6 +126,10 @@
 |---|---|
 | `--bg-alpha` `--bg-image` | 背景层的不透明度 / 图 |
 | `--panel-alpha` | 面板（收发区 / 状态轨道 / 输入框 / 弹窗）不透明度 |
+| `--timeline-color` `--timeline-alpha` | 状态轨道单独底色 / 不透明度 |
+| `--console-color` `--console-alpha` | 串口收发窗口单独底色 / 不透明度 |
+| `--composer-color` `--composer-alpha` | 输入指令窗口单独底色 / 不透明度 |
+| `--fg` | 文字颜色 |
 | `--side-color` `--side-alpha` `--side-image` | 侧栏单独底色 / 不透明度 / 图 |
 | `--logo` | 鲸鱼图颜色（默认 `currentColor`，即跟随文字色） |
 
@@ -145,7 +156,16 @@ curl -X POST http://127.0.0.1:8898/theme -H "Content-Type: application/json" -d 
 }'
 ```
 
-### 2) 半透明玻璃感
+### 2) 只改文字色 + 只把收发区透明
+
+```bash
+curl -X POST http://127.0.0.1:8898/theme -H "Content-Type: application/json" -d '{
+  "fg_color": "#e6edf3",
+  "console_color": "#0d1b2a", "console_alpha": 0.55
+}'
+```
+
+### 3) 半透明玻璃感
 
 ```bash
 curl -X POST http://127.0.0.1:8898/theme -H "Content-Type: application/json" -d '{
@@ -155,7 +175,7 @@ curl -X POST http://127.0.0.1:8898/theme -H "Content-Type: application/json" -d 
 }'
 ```
 
-### 3) 彻底重画（custom.css）
+### 4) 彻底重画（custom.css）
 
 把文件放到 `<runtime_root>/theme/custom.css`，例如：
 
@@ -168,7 +188,7 @@ header { border-bottom: 1px solid var(--accent); }
 
 放好之后刷新页面即可；文件不存在页面就当没这回事（不会报错）。
 
-### 4) 从电脑选图
+### 5) 从电脑选图
 
 页面里点「选图…」就是在用 `POST /theme/image`；脚本里也可以：
 

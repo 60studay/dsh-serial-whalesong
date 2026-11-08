@@ -15,6 +15,25 @@ import { $, api, post, errText } from './core.js';
 
 var current = {};
 var appliedExtra = [];
+var touched = {};
+
+function setOrDrop(name, value) {
+  if (value === undefined || value === null || value === '') {
+    document.documentElement.style.removeProperty(name);
+  } else {
+    document.documentElement.style.setProperty(name, String(value));
+  }
+}
+
+/* 把 computed 的 rgb()/rgba() 转成 #rrggbb，好回填 <input type="color"> */
+function toHex(color) {
+  var m = String(color || '').match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (!m) return '';
+  return '#' + [1, 2, 3].map(function (i) {
+    var v = parseInt(m[i], 10).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('');
+}
 
 function pct(value) {
   var n = parseInt(value, 10);
@@ -45,6 +64,17 @@ export function applyTheme(theme) {
   if (current.accent) root.style.setProperty('--accent', current.accent);
   else root.style.removeProperty('--accent');
 
+  // 文字颜色：空 = 用主题自带的中性色
+  setOrDrop('--fg', t.fg_color);
+
+  // 三个窗口各自的覆盖：空串 = 撤掉变量，回落到 --panel / --panel-alpha
+  [['timeline', t.timeline_color, t.timeline_alpha],
+   ['console', t.console_color, t.console_alpha],
+   ['composer', t.composer_color, t.composer_alpha]].forEach(function (row) {
+    setOrDrop('--' + row[0] + '-color', row[1]);
+    setOrDrop('--' + row[0] + '-alpha', row[2] === '' || row[2] === undefined ? '' : row[2]);
+  });
+
   // 自由变量：先撤掉上一次设的，再按这次的设（别人写皮肤就改这些）
   (appliedExtra || []).forEach(function (name) { root.style.removeProperty(name); });
   appliedExtra = [];
@@ -64,6 +94,29 @@ export function applyTheme(theme) {
   if ($('themeSideAlpha')) $('themeSideAlpha').value = String(Math.round(current.side_alpha * 100));
   if ($('themeSideColor') && current.side_color) $('themeSideColor').value = current.side_color;
   if ($('themeAccent') && current.accent) $('themeAccent').value = current.accent;
+
+  var cs = getComputedStyle(document.documentElement);
+  // 颜色控件必须有值；没设过就显示"当前实际生效的颜色"
+  fillColor('themeFg', t.fg_color, cs.getPropertyValue('--fg'));
+  fillColor('themeTimeline', t.timeline_color, cs.getPropertyValue('--panel'));
+  fillColor('themeConsole', t.console_color, cs.getPropertyValue('--panel'));
+  fillColor('themeComposer', t.composer_color, cs.getPropertyValue('--panel'));
+  fillAlpha('themeTimelineA', t.timeline_alpha);
+  fillAlpha('themeConsoleA', t.console_alpha);
+  fillAlpha('themeComposerA', t.composer_alpha);
+}
+
+function fillColor(id, value, fallback) {
+  var el = $(id);
+  if (!el) return;
+  var hex = value || toHex(fallback);
+  if (hex) el.value = hex;
+}
+
+function fillAlpha(id, value) {
+  var el = $(id);
+  if (!el) return;
+  el.value = String(Math.round((value === '' || value === undefined ? 1 : value) * 100));
 }
 
 function note(text, cls) {
@@ -129,7 +182,7 @@ export function initTheme() {
   });
 
   $('btnThemeSave').addEventListener('click', function () {
-    save({
+    var patch = {
       bg_image: $('themeBg').value.trim(),
       bg_alpha: pct($('themeAlpha').value),
       panel_alpha: pct($('themePanel').value),
@@ -137,7 +190,37 @@ export function initTheme() {
       side_color: $('themeSideColor').value,
       side_alpha: pct($('themeSideAlpha').value),
       accent: $('themeAccent').value
-    }, '已应用');
+    };
+    // 只有"用户真动过"的单独项才提交：没动过就不写，
+    // 免得点一次「应用」把当前的深色调写死，之后换浅色主题就错色。
+    if (touched.fg) patch.fg_color = $('themeFg').value;
+    ['timeline', 'console', 'composer'].forEach(function (name) {
+      var colorId = 'theme' + name.charAt(0).toUpperCase() + name.slice(1);
+      var alphaId = colorId + 'A';
+      if (touched[name]) {
+        patch[name + '_color'] = $(colorId).value;
+        patch[name + '_alpha'] = pct($(alphaId).value);
+      }
+    });
+    save(patch, '已应用');
+  });
+
+  $('btnResetFg').addEventListener('click', function () {
+    touched.fg = true;
+    var cs = getComputedStyle(document.documentElement);
+    $('themeFg').value = toHex(cs.getPropertyValue('--fg')) || '#d4d4d4';
+    save({ fg_color: '' }, '文字颜色回默认');
+    touched.fg = false;
+    applyTheme(current);
+  });
+
+  // 标记"动过"，并给三个窗口滑块的联动按一下预览
+  [['fg', 'themeFg'], ['timeline', 'themeTimeline'], ['timeline', 'themeTimelineA'],
+   ['console', 'themeConsole'], ['console', 'themeConsoleA'],
+   ['composer', 'themeComposer'], ['composer', 'themeComposerA']
+  ].forEach(function (pair) {
+    var el = $(pair[1]);
+    if (el) el.addEventListener('change', function () { touched[pair[0]] = true; });
   });
 
   $('btnThemeReset').addEventListener('click', function () {
