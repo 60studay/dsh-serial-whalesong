@@ -50,6 +50,53 @@ def read_instance(paths, scene):
     return info
 
 
+def _instance_alive(info, timeout=1.0):
+    """实例还活着吗：能连上 `/status` 才算。
+
+    **不信 pid**：pid 会被系统复用，端口/HTTP 才权威。
+    """
+    url = str((info or {}).get("url") or "").rstrip("/")
+    if not url:
+        return False
+    return _get(url, "/status", timeout=timeout) is not None
+
+
+def reap_dead(paths):
+    """给失效的网页实例"收尸"：删掉指向已死服务的 state/*.web.json。
+
+    以前每个场景要单独 `close` 一次，用户没法一条命令清干净；
+    更糟的是死文件一直躺着，`serial_web status` 看着像"还在跑"。
+    返回收了哪些、留下哪些，让工具层能如实报数。
+    """
+    state_dir = os.path.join(paths["runtime_root"], "state")
+    reaped, kept = [], []
+    try:
+        names = sorted(os.listdir(state_dir))
+    except OSError:
+        return {"reaped": reaped, "kept": kept, "dir": state_dir}
+
+    for name in names:
+        if not name.endswith(".web.json"):
+            continue
+        path = os.path.join(state_dir, name)
+        scene = name[:-len(".web.json")]
+        try:
+            with open(path, encoding="utf-8") as handle:
+                info = json.load(handle)
+        except (OSError, ValueError):
+            info = None
+        if _instance_alive(info):
+            kept.append(scene)
+            continue
+        try:
+            os.remove(path)
+        except OSError:
+            kept.append(scene)          # 删不掉就别假装收下了
+            continue
+        reaped.append(scene)
+    return {"reaped": reaped, "kept": kept, "dir": state_dir}
+
+
 def _get(url, path, timeout=2.0):
     try:
         with urllib.request.urlopen(url + path, timeout=timeout) as resp:
@@ -121,8 +168,54 @@ def pick_port(preferred=0):
 
 
 # ── 动作 ────────────────────────────────────────────────────────────────────
-def _open_browser(url):
-    """把 URL 丢给系统浏览器。失败不影响服务本身（只是用户需要自己点链接）。"""
+OPEN_DEDUPE_S = 60.0
+
+
+def _claim_open_slot(paths, url):
+    """同一个 URL **60 秒内只弹一次**（P3 兜底：防止标签页越开越多）。
+
+    看客心跳已经挡住了大部分重复弹，这里只是最后一道：连续调几个工具时，
+    即使窗口状态判断失误，也不会"一秒开一个标签"。
+    """
+    stamp_path = os.path.join(paths["runtime_root"], "last-open.json")
+    now = time.time()
+    data = {}
+    try:
+        with open(stamp_path, encoding="utf-8") as handle:
+            loaded = json.load(handle)
+        if isinstance(loaded, dict):
+            data = loaded
+    except (OSError, ValueError):
+        data = {}
+    try:
+        last = float(data.get(url) or 0.0)
+    except (TypeError, ValueError):
+        last = 0.0
+    if now - last < OPEN_DEDUPE_S:
+        return False
+    data[url] = now
+    # 只留最近 20 条，别让这个文件长毛
+    if len(data) > 20:
+        items = sorted(data.items(), key=lambda kv: float(kv[1] or 0))[-20:]
+        data = dict(items)
+    try:
+        os.makedirs(paths["runtime_root"], exist_ok=True)
+        tmp = stamp_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        os.replace(tmp, stamp_path)
+    except OSError:
+        pass
+    return True
+
+
+def _open_browser(url, paths=None):
+    """把 URL 丢给系统浏览器。失败不影响服务本身（只是用户需要自己点链接）。
+
+    传了 `paths` 就走 60 秒去重；不传（内部/测试调用）照旧直接开。
+    """
+    if paths is not None and not _claim_open_slot(paths, url):
+        return False
     try:
         import webbrowser
         return webbrowser.open(str(url))
@@ -131,7 +224,7 @@ def _open_browser(url):
 
 
 def _viewer_idle(url, timeout=1.0):
-    """浏览器窗口还在吗？（网页每 3 秒 ping 一次，断了就是窗口被关了）
+    """浏览器窗口还在吗？（网页每 **5 秒** ping 一次，断了就是窗口被关了）
 
     问不到就当"有人看着"——宁可不弹，也不制造噪音。
     """
@@ -163,8 +256,8 @@ def open_web(paths, scene, port=0, mode="light", open_browser=False,
     - `open_browser`：这次"从没有到有"起页面时，要不要顺手把窗口打开。
     - `force_window`：**页面已经在跑**时也要弹一次。只有"用户亲口说要"才允许传 True。
     - `reopen_if_idle`：自动路径用。页面还在跑、但**浏览器窗口已经被关了**
-      （看客心跳断了 ≥15 秒）→ 再弹一次。用户关窗口通常只是"先不看了"，
-      下次用串口就该把页面给他送回来。
+      （看客心跳断了 ≥60 秒，或收到 /bye）→ 再弹一次。用户关窗口通常只是
+      "先不看了"，下次用串口就该把页面给他送回来。
     """
     open_browser = bool(open_browser)
     force_window = bool(force_window)
@@ -177,7 +270,7 @@ def open_web(paths, scene, port=0, mode="light", open_browser=False,
         if not should_pop and reopen_if_idle and url:
             should_pop = _viewer_idle(url)
         if should_pop and url:
-            _open_browser(url)
+            _open_browser(url, paths)
             _mark_viewer_seen(url)
         return {
             "running": True,

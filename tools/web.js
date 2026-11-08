@@ -14,17 +14,22 @@ export function register({ register, runCli, sceneParam, logRoot }) {
 register({
   name: 'serial_web',
   description:
-    'Open, query, or close the visual web UI for a scene and return a clickable URL. ' +
+    'Open, query, close, or reap the visual web UI for a scene and return a clickable URL. ' +
     'Use it when the human asks to see the web page: you get the URL back immediately ' +
     '(the server runs in the background), and you can paste that URL to them. ' +
     'Opening twice is idempotent — an already running instance is reused, never duplicated. ' +
-    'Closing really releases the port, so a serial terminal can use it right after.',
+    'Closing really releases the port, so a serial terminal can use it right after. ' +
+    'action=reap deletes leftover state files of instances that already died ' +
+    '(use it when the human says stale pages/《失效》tabs are piling up).',
   parameters: {
     action: {
       type: 'string',
       required: true,
-      enum: ['open', 'status', 'close'],
-      description: 'open = start (or reuse) the web UI; status = is it running; close = stop it and free the port.',
+      enum: ['open', 'status', 'close', 'reap'],
+      description:
+        'open = start (or reuse) the web UI; status = is it running; ' +
+        'close = stop it and free the port; reap = delete state files of dead instances ' +
+        '(no scene needed, reports how many were cleaned).',
     },
     scene: { ...sceneParam, description: 'Scene name. Omit when there is only one scene.' },
     port: { type: 'number', description: 'Preferred HTTP port. Omit to auto-pick from 8898 upward.' },
@@ -58,6 +63,16 @@ register({
         alreadyRunning: { type: 'boolean' },
         stopped: { type: 'boolean' },
         released: { type: 'boolean', description: 'True when the port is really free again.' },
+        reaped: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Scenes whose dead instance state files were deleted (action=reap).',
+        },
+        kept: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Scenes whose instance is still alive (action=reap).',
+        },
         note: { type: 'string' },
       },
     },
@@ -68,6 +83,8 @@ register({
       if (value.mode) lines.push(`<mode>${value.mode}</mode>`);
       if (value.alreadyRunning) lines.push('<already_running>true</already_running>');
       if (value.released !== undefined) lines.push(`<released>${value.released}</released>`);
+      if (value.reaped) lines.push(`<reaped count="${value.reaped.length}">${value.reaped.join(' ')}</reaped>`);
+      if (value.kept) lines.push(`<kept count="${value.kept.length}">${value.kept.join(' ')}</kept>`);
       if (value.note) lines.push(`<note>${value.note}</note>`);
       return [{ type: 'text', text: lines.join('\n') }];
     },
@@ -75,8 +92,8 @@ register({
   isConcurrencySafe: () => false,
   async execute(args) {
     const action = String(args?.action ?? '').trim();
-    if (!['open', 'status', 'close'].includes(action)) {
-      throw new Error(`action 只能是 open / status / close，收到 ${action}`);
+    if (!['open', 'status', 'close', 'reap'].includes(action)) {
+      throw new Error(`action 只能是 open / status / close / reap，收到 ${action}`);
     }
     const argv = ['webctl', '--action', action];
     const scene = String(args?.scene ?? '').trim();
@@ -98,7 +115,16 @@ register({
     if (data.already_running !== undefined) result.alreadyRunning = Boolean(data.already_running);
     if (data.stopped !== undefined) result.stopped = Boolean(data.stopped);
     if (data.released !== undefined) result.released = Boolean(data.released);
+    if (Array.isArray(data.reaped)) result.reaped = data.reaped.map(String);
+    if (Array.isArray(data.kept)) result.kept = data.kept.map(String);
     if (data.note) result.note = data.note;
+    if (action === 'reap') {
+      const count = result.reaped ? result.reaped.length : 0;
+      const alive = result.kept ? result.kept.length : 0;
+      result.note = count
+        ? `收掉 ${count} 个死实例${alive ? `，另有 ${alive} 个还活着` : ''}`
+        : `没有死实例${alive ? `，${alive} 个还活着` : ''}`;
+    }
     return result;
   },
 });

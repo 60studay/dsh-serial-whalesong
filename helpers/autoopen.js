@@ -19,7 +19,9 @@ import path from 'node:path';
 /** 哪些子命令算"真的在动这块板子"。纯查询 / 后台观察 / 开关自身都不算。 */
 export const AUTO_OPEN_SUBS = ['send', 'read', 'control'];
 
-export function maybeAutoOpen({ argv, python, env, entry, runtimeRoot }) {
+// 默认 `= {}`：调用点漏传参数时也不能抛。函数体里每句都在 try/catch 内，
+// 唯独"形参解构"发生在 try 之前，对面拿 maybeAutoOpen(undefined) 试出来过。
+export function maybeAutoOpen({ argv, python, env, entry, runtimeRoot } = {}) {
   try {
     if (!AUTO_OPEN_SUBS.includes(String(argv?.[0] ?? ''))) return;
     if (!readAutoOpen(runtimeRoot)) return;

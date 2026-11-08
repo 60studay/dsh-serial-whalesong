@@ -110,7 +110,8 @@ def main():
             "url": "http://127.0.0.1:8899/", "port": 8899, "pid": 1,
             "status": {"mode": "light"},
         }
-        web_service._open_browser = lambda url: calls.append(url)
+        # 注意签名：open_web 现在会带上 paths 调它（60 秒去重要用）
+        web_service._open_browser = lambda url, paths=None: calls.append(url)
         web_service._viewer_idle = lambda url, timeout=1.0: idle["value"]
         web_service._mark_viewer_seen = lambda url, timeout=1.0: marked.append(url)
         try:

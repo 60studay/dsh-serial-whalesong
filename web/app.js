@@ -296,16 +296,119 @@ import { pollChannel } from './js/channel.js';
     pollTimer = setInterval(tick, 700);
   }
 
-  /* ── 看客心跳 ───────────────────────────────────────────────
-     页面活着就每 5 秒 ping 一次；关窗口时补一个 /bye（beacon，立即生效）。
-     后端靠它判断"浏览器窗口还在不在"：窗口还在就不重复弹，
-     窗口被关了，下次用串口就自动把页面送回来（用户要的就是这个）。 */
+  /* ── 看客心跳 + 失效自救 ─────────────────────────────────────
+     服务活着：每 5 秒 ping 一次，别的一概不多做（不加横幅、不改标题）。
+     连续 3 次 ping 失败（≈15 秒）→ 这个标签已经没用了，它自己收拾：
+       ① 标题加「[已失效]」前缀，用户一眼能在标签栏里认出该关哪个
+       ② 顶部盖一条灰黄横幅（不是错误红）+「关闭本页」按钮
+       ③ 试 window.close()；200ms 后如果还活着，就明说浏览器不让脚本关别人开的标签
+       ④ 顺便探 8898~8907，哪个还活着就 location.replace 跳过去（死标签变活标签）
+     跳过去 / 确认关不掉之后**停止心跳和探测**，别让死页面在后台一直刷。
+
+     说清边界：这只覆盖"页面 JS 已经加载、服务后来死了"这一类。
+     服务从没起来过、或用户刷新过，浏览器显示的是它自己的错误页，脚本根本跑不了。 */
+  var FAILS_TO_DIE = 3;
+  // 8899 跳过：那是 DSH 自己的端口。no-cors 探活只认"有没有回应"，
+  // 探到 DSH 也算"通"，跳过去比留着死页更糟。
+  var PROBE_PORTS = [8898, 8900, 8901, 8902, 8903, 8904, 8905, 8906, 8907];
+
   function startViewerHeartbeat() {
-    api('/ping');
-    setInterval(function () { api('/ping'); }, 5000);
+    var fails = 0;
+    var stopped = false;
+    var timer = setInterval(function () {
+      if (stopped) return;
+      // api() 在 HTTP 层失败时 resolve({ok:false})，网络断了才 reject —— 两种都算没心跳
+      api('/ping').then(function (data) {
+        if (data && data.ok) { fails = 0; return; }
+        miss();
+      }, miss);
+    }, 5000);
+
+    function miss() {
+      if (stopped) return;
+      fails += 1;
+      if (fails < FAILS_TO_DIE) return;
+      stopped = true;
+      clearInterval(timer);
+      becomeDead();
+    }
+
     window.addEventListener('pagehide', function () {
       try { navigator.sendBeacon('/bye'); } catch (e) { /* 老浏览器没有就算了 */ }
     });
+  }
+
+  function becomeDead() {
+    document.title = '[已失效] ' + document.title;
+    buildDeadBanner();
+    try { window.close(); } catch (e) { /* 被拦了，下面走降级提示 */ }
+    setTimeout(function () {
+      var hint = document.getElementById('dead-close-hint');
+      if (hint) hint.style.display = '';
+    }, 200);
+    jumpToAliveInstance();
+  }
+
+  function buildDeadBanner() {
+    if (document.getElementById('dead-banner')) return;
+    var bar = document.createElement('div');
+    bar.id = 'dead-banner';
+    bar.setAttribute('style',
+      'position:fixed;top:0;left:0;right:0;z-index:99999;background:#fffbeb;' +
+      'color:#7c2d12;border-bottom:1px solid #fcd34d;padding:10px 16px;' +
+      'font:13px/1.6 system-ui,-apple-system,sans-serif;display:flex;' +
+      'align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,.08)');
+
+    var text = document.createElement('span');
+    text.style.flex = '1';
+    text.textContent = '这个页面已经失效：串口网页服务已关闭。下面两种办法，哪个都行';
+    bar.appendChild(text);
+
+    var btn = document.createElement('button');
+    btn.textContent = '关闭本页';
+    btn.setAttribute('style',
+      'font:inherit;padding:4px 12px;border-radius:6px;cursor:pointer;' +
+      'border:1px solid #f59e0b;background:#f59e0b;color:#fff;font-weight:600');
+    btn.addEventListener('click', function () {
+      try { window.close(); } catch (e) { /* 被拦就按提示走 */ }
+      var hint = document.getElementById('dead-close-hint');
+      if (hint) hint.style.display = '';
+    });
+    bar.appendChild(btn);
+
+    var hint = document.createElement('span');
+    hint.id = 'dead-close-hint';
+    hint.style.display = 'none';
+    hint.style.fontSize = '12px';
+    hint.style.opacity = '.85';
+    hint.textContent = '浏览器不让脚本关掉别人开的标签，请按 Ctrl+W';
+    bar.appendChild(hint);
+
+    document.body.appendChild(bar);
+    document.body.style.paddingTop = '52px';
+  }
+
+  /* 探活：no-cors 只能判断"有没有回应"，所以只认我们自己的端口段；
+     探到一个就跳过去——跳完这个页面就不再是死的了。 */
+  function jumpToAliveInstance() {
+    var index = 0;
+    function next() {
+      if (index >= PROBE_PORTS.length) return;   // 一个都不通：留着横幅，不再刷
+      var port = PROBE_PORTS[index++];
+      var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 300) : null;
+      fetch('http://127.0.0.1:' + port + '/viewer', {
+        mode: 'no-cors', cache: 'no-store',
+        signal: ctrl ? ctrl.signal : undefined
+      }).then(function () {
+        if (timer) clearTimeout(timer);
+        window.location.replace('http://127.0.0.1:' + port + '/');
+      }, function () {
+        if (timer) clearTimeout(timer);
+        next();
+      });
+    }
+    next();
   }
 
   /* ── 事件 ─────────────────────────────────────────────── */

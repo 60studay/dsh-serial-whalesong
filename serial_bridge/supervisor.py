@@ -283,8 +283,15 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         return {"ok": True, "closed": True}
 
     def viewer_state(self):
-        """给 open_web 判断用。**不刷新时间戳**，否则一问就变成"有人看着"，永远不弹。"""
-        idle = time.time() - (getattr(self, "_viewer_seen", 0.0) or 0.0)
+        """给 open_web 判断用。**不刷新时间戳**，否则一问就变成"有人看着"，永远不弹。
+
+        从没人 ping 过时 `idle_s` 返回 `null`，而不是"从 1970 年算起"的天文数字
+        —— 那个数没有意义，只会让人以为见了鬼。
+        """
+        seen = getattr(self, "_viewer_seen", 0.0) or 0.0
+        if not seen:
+            return {"ok": True, "idle_s": None, "viewing": False}
+        idle = time.time() - seen
         return {"ok": True, "idle_s": round(idle, 3),
                 "viewing": idle < self.VIEWER_IDLE_S}
 

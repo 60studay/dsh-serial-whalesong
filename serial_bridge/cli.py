@@ -485,10 +485,19 @@ def _default_scene(paths):
 
 
 def cmd_webctl(paths, args):
-    """网页服务遥控：open / status / close（给 AI 的 serial_web 工具用）。"""
+    """网页服务遥控：open / status / close / reap（给 AI 的 serial_web 工具用）。"""
     from . import web_service
-    scene = (args.scene or "").strip() or _default_scene(paths)
     action = args.action
+
+    # 收尸：不起服务、也不需要场景。用户没法一条命令清干净死实例，所以单独给个动作。
+    if action == "reap":
+        return _ok(web_service.reap_dead(paths))
+
+    # 其余动作先顺手扫一遍：死掉的实例文件留着会让人以为"还在跑"。
+    # 没有实例文件时这一步是空转（只是 listdir），不给调用方增加可见延迟。
+    web_service.reap_dead(paths)
+
+    scene = (args.scene or "").strip() or _default_scene(paths)
     if action == "open":
         # 不传 flag = 不弹（"用户没说就别打扰"）。弹窗只有三个来源：
         #   ① 用户/AI 显式要（--open-browser；页面已在跑再加 --force-browser）；
@@ -681,7 +690,7 @@ def build_parser():
     # 网页遥控：ai 工具 serial_web 用的。web 是前台阻塞，webctl 是"起完就返回"
     webctl = sub.add_parser("webctl")
     webctl.add_argument("--action", default="status",
-                        choices=["open", "status", "close"])
+                        choices=["open", "status", "close", "reap"])
     webctl.add_argument("--scene", default="", help="留空 = 唯一的场景")
     webctl.add_argument("--port", type=int, default=0, help="0 = 自动挑（8898 起）")
     webctl.add_argument("--mode", default="light", choices=["light", "watch"])
