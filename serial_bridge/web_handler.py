@@ -79,7 +79,16 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 return self._json(self.ctx["status"]())
             # 外观（2.2）：背景图 / 不透明度 / 主色。运行期状态，存在 .runtime/ui-theme.json
             if path == "/theme":
-                return self._json({"ok": True, "theme": self.ctx["get_theme"]()})
+                # tokens：公开的变量清单，写皮肤的人照着改（也是"接口"的一部分）
+                return self._json({"ok": True, "theme": self.ctx["get_theme"](),
+                                   "tokens": self.ctx["theme_tokens"]()})
+            if path == "/theme/custom.css":
+                # 运行期目录里的 theme/custom.css：想完全自定义的人把 CSS 放这儿
+                found = self.ctx["theme_custom_css"]()
+                if not found:
+                    return self._json({"ok": False, "error": {
+                        "kind": "not_found", "message": path}}, 404)
+                return self._send(200, found, "text/css; charset=utf-8")
             # 本地图片（用户从电脑里选的）：从 .runtime/theme/ 里取，名字是审计过的
             if path.startswith("/theme/image/"):
                 found = self.ctx["theme_image"](path.rsplit("/", 1)[-1])

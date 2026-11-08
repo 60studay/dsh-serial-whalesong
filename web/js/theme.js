@@ -14,6 +14,7 @@
 import { $, api, post, errText } from './core.js';
 
 var current = {};
+var appliedExtra = [];
 
 function pct(value) {
   var n = parseInt(value, 10);
@@ -43,6 +44,17 @@ export function applyTheme(theme) {
   else root.style.removeProperty('--side-color');
   if (current.accent) root.style.setProperty('--accent', current.accent);
   else root.style.removeProperty('--accent');
+
+  // 自由变量：先撤掉上一次设的，再按这次的设（别人写皮肤就改这些）
+  (appliedExtra || []).forEach(function (name) { root.style.removeProperty(name); });
+  appliedExtra = [];
+  var extra = t.extra || {};
+  Object.keys(extra).forEach(function (name) {
+    if (/^--[a-z0-9][a-z0-9-]{0,39}$/.test(name)) {
+      root.style.setProperty(name, String(extra[name]));
+      appliedExtra.push(name);
+    }
+  });
 
   // 回填控件（弹窗打开时看到的就是当前值）
   if ($('themeBg')) $('themeBg').value = current.bg_image;
@@ -138,12 +150,20 @@ export function initTheme() {
   wirePicker('btnBgPick', 'fileBg', 'themeBg');
   wirePicker('btnSideBgPick', 'fileSideBg', 'themeSideBg');
 
-  // 兜底钩子（对面 B 方案）：web/custom.css 存在就挂上，不存在就什么都不做。
-  var link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/custom.css';
-  link.onerror = function () { link.remove(); };
-  document.head.appendChild(link);
+  // 完全自由的那条路（对面 B 方案）：页面最后加载一个 custom.css。
+  // 先试运行期目录（.runtime/theme/custom.css），没有再退回仓库里的 web/custom.css；
+  // 两个都没有就自己摘掉，不留 404 噪音。
+  function linkCss(href) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.onerror = function () { link.remove(); };
+    document.head.appendChild(link);
+    return link;
+  }
+  var runtimeCss = linkCss('/theme/custom.css');
+  runtimeCss.onload = function () { /* 有就用，不用再挂仓库那份 */ };
+  runtimeCss.onerror = function () { runtimeCss.remove(); linkCss('/custom.css'); };
 
   api('/theme').then(function (data) {
     if (data && data.ok) applyTheme(data.theme);

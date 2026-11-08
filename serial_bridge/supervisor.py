@@ -385,6 +385,18 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             url = theme_mod.save_image(self.paths, raw, ext)
             return {"ok": True, "url": url}
 
+        def theme_tokens():
+            from . import theme as theme_mod
+            return list(theme_mod.TOKENS)
+
+        def theme_custom_css():
+            from . import theme as theme_mod
+            path = theme_mod.custom_css_path(self.paths)
+            if not path:
+                return None
+            with open(path, "rb") as handle:
+                return handle.read()
+
         def theme_image(name):
             from . import theme as theme_mod
             path = theme_mod.image_path(self.paths, name)
@@ -409,6 +421,8 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             "set_theme": set_theme,
             "save_theme_image": save_theme_image,
             "theme_image": theme_image,
+            "theme_tokens": theme_tokens,
+            "theme_custom_css": theme_custom_css,
             "ping": self.viewer_ping,
             "bye": self.viewer_bye,
             "viewer": self.viewer_state,

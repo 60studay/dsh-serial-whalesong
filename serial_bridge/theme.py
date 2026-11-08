@@ -36,6 +36,9 @@ DEFAULTS = {
     "side_image": "",    # 空 = 侧栏不铺图
     "side_color": "",    # 空 = 用主题底色
     "side_alpha": 1.0,   # 侧栏不透明度
+    # 给别人留的口子：任意 CSS 变量（形状见下面 EXTRA_* 的约束）。
+    # 我们的那几项只是"官方选择题"，想彻底自定义的人用这个 + /theme/custom.css。
+    "extra": {},
 }
 
 _ALLOWED_PREFIXES = ("http://", "https://", "data:image/", "/theme/image/")
@@ -76,6 +79,11 @@ def read_theme(paths):
         data["side_image"] = raw["side_image"]
     if isinstance(raw.get("side_color"), str) and _HEX_RE.match(raw["side_color"].strip()):
         data["side_color"] = raw["side_color"].strip()
+    extra = raw.get("extra")
+    if isinstance(extra, dict):
+        for key, value in extra.items():
+            if isinstance(key, str) and _VAR_NAME_RE.match(key) and isinstance(value, str):
+                data["extra"][key] = value[:EXTRA_VALUE_MAX]
     return data
 
 
@@ -98,8 +106,10 @@ def write_theme(paths, patch):
             merged[key] = _check_alpha(value, key)
         elif key == "accent":
             merged["accent"] = _check_accent(value)
-        else:
+        elif key == "side_color":
             merged["side_color"] = _check_accent(value, "side_color")
+        else:
+            merged["extra"] = _check_extra(value)
 
     path = theme_path(paths)
     directory = os.path.dirname(path)
@@ -163,6 +173,27 @@ IMAGE_MAX_BYTES = 8 * 1024 * 1024
 IMAGE_KEEP = 8
 _NAME_RE = re.compile(r"^[0-9a-f]{16}\.(?:png|jpg|jpeg|webp|gif)$")
 
+# ── 给"想完全自定义的人"留的接口 ─────────────────────────────
+# 官方那几项（背景/透明度/主色/侧栏）只是**选择题**；真要自由度，有两条路：
+#   ① extra：一堆 CSS 变量（页面上用 setProperty 设，不拼 CSS 文本，注入不了）
+#   ② /theme/custom.css：运行期目录里的任意 CSS，页面最后加载，想怎么改都行
+EXTRA_MAX_KEYS = 64
+EXTRA_VALUE_MAX = 300
+_VAR_NAME_RE = re.compile(r"^--[a-z0-9][a-z0-9-]{0,39}$")
+
+# 公开的变量清单（GET /theme 会带回去，写皮肤的人照着改就行）
+TOKENS = [
+    "--bg", "--panel", "--fg", "--muted", "--line", "--line-strong",
+    "--accent", "--accent-hover", "--human", "--ai", "--paused", "--danger",
+    "--btn-face", "--btn-highlight", "--btn-shadow", "--hover-bg",
+    "--tag-ai-bg", "--tag-human-bg", "--tag-auto-bg", "--tag-rule-bg",
+    "--tag-rule-fg", "--tag-rule-line", "--tag-dev-bg",
+    "--pill-human-bg", "--pill-ai-bg", "--pill-paused-bg",
+    "--tx-fg", "--input-bg", "--overlay-bg", "--shadow-pop",
+    "--panel-alpha", "--side-color", "--side-alpha", "--bg-image", "--bg-alpha",
+    "--font-ui", "--font-mono", "--logo",
+]
+
 
 def theme_dir(paths):
     return os.path.join(paths["runtime_root"], "theme")
@@ -218,3 +249,40 @@ def _trim_images(directory, keep=IMAGE_KEEP):
                 pass
     except OSError:
         pass
+
+
+def _check_extra(value):
+    """任意 CSS 变量。**只做形状校验，不猜你想干什么** —— 这本来就是给自由度用的。
+
+    名字必须是 `--kebab-case`（≤40 字符），值 ≤300 字符且不含花括号/换行：
+    这些东西是页面上用 `style.setProperty()` 设的，不会拼进 CSS 文本，
+    所以注入不了；限制花括号只是防止有人误以为这里能写整段 CSS（那该用 custom.css）。
+    """
+    if not isinstance(value, dict):
+        raise BridgeError("config", "extra 要是个对象（变量名 → 值）。",
+                          hint=['例如 {"--accent": "#ff3366"}'])
+    if len(value) > EXTRA_MAX_KEYS:
+        raise BridgeError("config", "自定义变量最多 %d 个。" % EXTRA_MAX_KEYS)
+    out = {}
+    for key, raw in value.items():
+        name = str(key or "").strip()
+        if not _VAR_NAME_RE.match(name):
+            raise BridgeError("config", "变量名不合法：%r" % name,
+                              hint=["要写成 --kebab-case，例如 --accent / --tag-ai-bg"])
+        text = "" if raw is None else str(raw).strip()
+        if len(text) > EXTRA_VALUE_MAX:
+            raise BridgeError("config", "%s 的值太长了（上限 %d 字符）。" % (name, EXTRA_VALUE_MAX))
+        if any(ch in text for ch in "{}\n\r"):
+            raise BridgeError("config", "%s 的值里不能有花括号或换行。" % name,
+                              hint=["要写整段 CSS 请放到运行期目录的 theme/custom.css"])
+        out[name] = text
+    return out
+
+
+def custom_css_path(paths):
+    """运行期目录里的 `theme/custom.css`（有就返回路径，没有返回 None）。
+
+    这条是"完全自由"的那条路：页面最后加载它，任何 CSS 都能写。
+    """
+    path = os.path.join(theme_dir(paths), "custom.css")
+    return path if os.path.isfile(path) else None
