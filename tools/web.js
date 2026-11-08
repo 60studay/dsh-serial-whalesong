@@ -1,6 +1,10 @@
 /* 鲸歌工具层 · 网页服务（serial_web）。
- * 起/停/查后台网页实例。弹不弹浏览器由三层决定：显式参数 > 设置页开关 > 默认不弹。
- * 注意：这里**只**决定传哪个 flag；没显式要求时一个都不传，让 Python 去读开关。
+ * 起/停/查后台网页实例。
+ *
+ * 弹窗规矩（通讯板 12:49 定的唯一含义）：
+ *   · **用户亲口说要开网页** → 传 openBrowser=true → 无条件弹（页面在跑也弹）。
+ *   · 其他情况（不传 / false）→ 都不弹，只回 URL。
+ *   · 「开关=开 时用串口就自动弹」那条不在这里，在 helpers/autoopen.js（runCli 咽喉上）。
  */
 
 import { renderError } from '../helpers/errors.js';
@@ -32,9 +36,10 @@ register({
     openBrowser: {
       type: 'boolean',
       description:
-        'Open the page in the human screen browser. Omit to follow the plugin setting ' +
-        '"自动打开网页" (DSH left sidebar → Plugins → 鲸歌串口). That setting is OFF by default, ' +
-        'so omitting usually just returns the URL. true forces a window open; false forbids it.',
+        'Pass true ONLY when the human explicitly asked to open the web page ("帮我开网页"). ' +
+        'true always pops a window, even if the page is already running. ' +
+        'Omit or pass false to just return the URL; the plugin setting "自动打开网页" ' +
+        '(DSH left sidebar → Plugins → 鲸歌串口) governs the automatic case, not this parameter.',
     },
   },
   output: {
@@ -78,10 +83,10 @@ register({
     if (scene) argv.push('--scene', scene);
     if (Number.isFinite(args?.port)) argv.push('--port', String(Math.trunc(args.port)));
     if (args?.mode === 'light' || args?.mode === 'watch') argv.push('--mode', args.mode);
-    // 三个分支都要写全：false 和"不传"是两件事。
-    // false → 显式禁止；不传 → 交给 Python 去读设置页的开关（默认关）。
-    if (args?.openBrowser === true) argv.push('--open-browser');
-    else if (args?.openBrowser === false) argv.push('--no-browser');
+    // 显式 true = 用户亲口说要 → 无条件弹（页面在跑也弹，所以要 --force-browser）。
+    // false 和"不传"是同一条路：都不弹，只回 URL。开关不管这条路。
+    if (args?.openBrowser === true) argv.push('--open-browser', '--force-browser');
+    else argv.push('--no-browser');
     const data = await runCli(argv);
 
     const result = { action, running: Boolean(data.running) };

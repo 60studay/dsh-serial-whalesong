@@ -98,28 +98,62 @@ def main():
         os.remove(uiprefs.prefs_path(paths))
         check("文件不存在 → 默认关", uiprefs.read_prefs(paths) == {"auto_open_browser": False})
 
-        print("\n[7] 语义表：显式参数 > 开关 > 默认关")
-        uiprefs.write_prefs(paths, {"auto_open_browser": False})
-        off = paths
-        check("开关关 + 不传 → 不弹", uiprefs.resolve_open_browser(off, None) is False)
-        check("开关关 + true → 弹", uiprefs.resolve_open_browser(off, True) is True)
-        check("开关关 + false → 不弹", uiprefs.resolve_open_browser(off, False) is False)
-        uiprefs.write_prefs(paths, {"auto_open_browser": True})
-        check("开关开 + 不传 → 弹", uiprefs.resolve_open_browser(paths, None) is True)
-        check("开关开 + true → 弹", uiprefs.resolve_open_browser(paths, True) is True)
-        check("开关开 + false → 不弹（显式压过开关）",
-              uiprefs.resolve_open_browser(paths, False) is False)
+        print("\n[7] 复用路径：页面已经在跑时，只有 force_window 才弹（桩测试）")
+        from serial_bridge import web_service
+        calls = []
+        orig_read, orig_open = web_service.read_instance, web_service._open_browser
+        web_service.read_instance = lambda p, s: {
+            "url": "http://127.0.0.1:8899/", "port": 8899, "pid": 1,
+            "status": {"mode": "light"},
+        }
+        web_service._open_browser = lambda url: calls.append(url)
+        try:
+            # 自动路径（开关=开 由 send 触发）走的就是这个组合：不许弹
+            web_service.open_web(paths, "s", open_browser=True, force_window=False)
+            check("自动路径（不带 force）不弹", calls == [], calls)
+            # 用户亲口说要：页面在跑也弹一次
+            web_service.open_web(paths, "s", open_browser=True, force_window=True)
+            check("显式 force 弹一次", len(calls) == 1, calls)
+            # 再说一次"不要"：仍然不新增
+            web_service.open_web(paths, "s", open_browser=False, force_window=False)
+            check("不要就不弹", len(calls) == 1, calls)
+        finally:
+            web_service.read_instance = orig_read
+            web_service._open_browser = orig_open
 
-        print("\n[8] 命令行参数：三态，不能把「不传」当成 True")
+        print("\n[8] 命令行参数：「不传」= 不弹，不能默认成 True")
         parser = build_parser()
         plain = parser.parse_args(["webctl", "--action", "open"])
         check("webctl 不传 flag → None", plain.open_browser is None, plain.open_browser)
+        check("webctl 不传 force → False", plain.force_window is False, plain.force_window)
         forced = parser.parse_args(["webctl", "--action", "open", "--open-browser"])
         check("--open-browser → True", forced.open_browser is True, forced.open_browser)
         denied = parser.parse_args(["webctl", "--action", "open", "--no-browser"])
         check("--no-browser → False", denied.open_browser is False, denied.open_browser)
+        forc = parser.parse_args(["webctl", "--action", "open", "--force-browser"])
+        check("--force-browser → True", forc.force_window is True, forc.force_window)
         webplain = parser.parse_args(["web", "--scene", "x"])
         check("web 不传 flag → None", webplain.open_browser is None, webplain.open_browser)
+
+        print("\n[9] 自动开页面：触发范围与三条硬规矩（静态检查）")
+        auto_js = read_text(os.path.join(HERE, "helpers", "autoopen.js"))
+        import re as _re
+        # 注释里提到"别这么写"不算真这么写：块注释和行注释都先剥掉。
+        auto_code = _re.sub(r"/\*.*?\*/", "", auto_js, flags=_re.S)
+        auto_code = "\n".join(line.split("//")[0] for line in auto_code.splitlines())
+        m = _re.search(r"AUTO_OPEN_SUBS\s*=\s*\[([^\]]*)\]", auto_code)
+        subs = _re.findall(r"'([a-z_]+)'", m.group(1)) if m else []
+        check("触发范围 = send / read / control", sorted(subs) == ["control", "read", "send"], subs)
+        for quiet in ("list", "info", "status", "watch", "daemon", "webctl", "prefs"):
+            check("不因 %s 触发" % quiet, quiet not in subs, subs)
+        check("detached 子进程（不阻塞主收发）", "detached: true" in auto_code)
+        check("输出丢掉（不读、不解析）", "stdio: 'ignore'" in auto_code)
+        check("绝不带 --force-browser（第二次不重弹）",
+              "--force-browser" not in auto_code, "自动路径不许无条件弹")
+        check("取不到 scene 就不触发", "pickScene" in auto_code)
+        check("读的是 ui-prefs.json", "ui-prefs.json" in auto_code)
+        check("runCli 里挂了钩子",
+              "maybeAutoOpen(" in read_text(os.path.join(HERE, "index.js")))
 
         print("\n[9] prefs 子命令")
         got = parser.parse_args(["prefs"])
@@ -127,12 +161,14 @@ def main():
         setter = parser.parse_args(["prefs", "--set", "auto_open_browser=true"])
         check("--set 可解析", setter.set == ["auto_open_browser=true"], setter.set)
 
-        print("\n[10] 工具层：false 和「不传」必须是两条路（静态检查）")
+        print("\n[10] 工具层：显式要 → 无条件弹；否则一律不弹（静态检查）")
         web_js = read_text(os.path.join(HERE, "tools", "web.js"))
-        check("有 --no-browser 分支", "'--no-browser'" in web_js)
-        check("判断了 === false", "=== false" in web_js)
-        check("描述不再写死「省略就不弹」",
-              "Omit to just return the URL" not in web_js)
+        check("显式 true 传 --open-browser", "'--open-browser'" in web_js)
+        check("显式 true 同时传 --force-browser", "'--force-browser'" in web_js)
+        check("其余情况一律 --no-browser",
+              "else argv.push('--no-browser')" in web_js)
+        check("描述写清「用户亲口说要才传 true」",
+              "explicitly asked" in web_js)
 
         print("\n[11] 单写者：只有内核的 uiprefs 写这个文件")
         for rel in ("index.js", os.path.join("tools", "web.js"),
@@ -159,7 +195,11 @@ def main():
         # 去掉行注释再查：注释里提到别这么写不算"真这么写"。
         api_code = "\n".join(line.split("//")[0] for line in api_js.splitlines())
         check("端点路径对", "/api/whalesong" in api_code, "缺 /api/whalesong")
-        check("只注册一次（防重复注册）", "claimed" in api_code)
+        # 重载会重新求值模块：注册记录必须放 globalThis，否则新旧两份代码
+        # 各自看到"没注册"，旧 effect 的清理会把刚注册的路由注销掉（实测 404）。
+        check("注册记录放在 globalThis", "globalThis[REGISTRY_KEY]" in api_code or
+              "globalThis[REGISTRY_KEY] =" in api_code)
+        check("先收旧注册再注册新的", "reg.live" in api_code)
         # 直接读 ctx.webServer 会让 cordis 报 "cannot get property without inject"，
         # 插件整个起不来（今天实测踩过），必须走 ctx.inject。
         check("用 ctx.inject 等服务就绪", "ctx.inject(" in api_code, "缺 ctx.inject")

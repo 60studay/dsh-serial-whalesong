@@ -13,8 +13,16 @@
 const ROUTE = '/api/whalesong';
 const MAX_BODY = 8 * 1024;
 
-// 模块级守卫：插件被 apply 两次（重载/多实例）时第二次直接跳过。
-let claimed = false;
+// 上一次注册的注销函数。**必须放在 globalThis 上**：
+// 插件重载会重新求值本模块，模块级变量在"旧的这份"和"新的这份"之间根本不共享，
+// 于是旧 effect 的清理晚于新 apply，把刚注册的路由又注销掉——
+// 实测症状就是重载两次后 /api/whalesong/prefs 变 404，而重启 DSH 后又是好的。
+const REGISTRY_KEY = Symbol.for('dsh-whalesong.prefs-api');
+
+function registry() {
+  if (!globalThis[REGISTRY_KEY]) globalThis[REGISTRY_KEY] = { live: null };
+  return globalThis[REGISTRY_KEY];
+}
 
 export function registerPrefsApi(ctx, { runCli }) {
   // 不能用 `if (ctx.webServer)` 探一下：cordis 对没 inject 的服务直接抛
@@ -24,8 +32,12 @@ export function registerPrefsApi(ctx, { runCli }) {
   if (typeof ctx.inject !== 'function') return;
 
   ctx.inject(['webServer'], (scoped) => {
-    if (claimed) return;
-    claimed = true;
+    // 同一路径只留一份：先收掉上一次的（跨重载也认得出）
+    const reg = registry();
+    if (reg.live) {
+      try { reg.live(); } catch { /* 旧的已经没了 */ }
+      reg.live = null;
+    }
 
     const handler = async (req, res) => {
       try {
@@ -66,9 +78,16 @@ export function registerPrefsApi(ctx, { runCli }) {
 
     scoped.effect(() => {
       const dispose = scoped.webServer.register({ kind: 'prefix', path: ROUTE, handler });
+      const release = () => {
+        if (typeof dispose === 'function') {
+          try { dispose(); } catch { /* 已经注销过 */ }
+        }
+      };
+      reg.live = release;
       return () => {
-        claimed = false;
-        if (typeof dispose === 'function') dispose();
+        // 只清掉"自己这一份"的记录，别把后来者的覆盖掉
+        if (reg.live === release) reg.live = null;
+        release();
       };
     }, '鲸歌：设置页接口 /api/whalesong/prefs');
   });

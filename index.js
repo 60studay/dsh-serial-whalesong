@@ -17,6 +17,7 @@ import { promisify } from 'node:util';
 
 import { makeEnv, readJson } from './helpers/env.js';
 import { renderError } from './helpers/errors.js';
+import { maybeAutoOpen } from './helpers/autoopen.js';
 import { registerPrefsApi } from './helpers/prefs_api.js';
 import { register as registerSerialTools } from './tools/serial.js';
 import { register as registerControlTools } from './tools/control.js';
@@ -62,19 +63,28 @@ export function apply(ctx, config = {}) {
   // logRoot 的决定顺序：插件配置 > 插件自带 config.json 的 log_root > 默认值。
   // 读 config.json 是为了让"插件进程"和"手动启动的网页"用同一个目录——
   // 否则两边各写一份 state，控制权就同步不上（Bug 3）。
-  const bundledLogRoot = (() => {
+  const bundledCommon = (() => {
     try {
-      const common = JSON.parse(readFileSync(path.join(HERE, 'config.json'), 'utf8').replace(/^\uFEFF/, ''));
-      return typeof common?.log_root === 'string' ? common.log_root.trim() : '';
+      return JSON.parse(readFileSync(path.join(HERE, 'config.json'), 'utf8').replace(/^\uFEFF/, '')) ?? {};
     } catch {
-      return '';
+      return {};
     }
   })();
+
+  const bundledLogRoot =
+    typeof bundledCommon?.log_root === 'string' ? bundledCommon.log_root.trim() : '';
 
   const logRoot =
     typeof config.logRoot === 'string' && config.logRoot.trim() !== ''
       ? config.logRoot.trim()
       : (bundledLogRoot || DEFAULT_LOG_ROOT);
+
+  // runtime 目录：必须和 Python 的 cli._paths 同一套规则（env > config.json > <log_root>/.runtime），
+  // 否则"开关=开 时自动开页面"会去读另一个文件，永远读到默认值。
+  const bundledRuntimeRoot =
+    typeof bundledCommon?.runtime_root === 'string' ? bundledCommon.runtime_root.trim() : '';
+  const runtimeRoot =
+    process.env.SERIAL_BRIDGE_RUNTIME_DIR || bundledRuntimeRoot || path.join(logRoot, '.runtime');
 
   const configuredProtocolRoot =
     typeof config.protocolRoot === 'string' && config.protocolRoot.trim() !== ''
@@ -126,6 +136,10 @@ export function apply(ctx, config = {}) {
     const protocolRoot = await resolveProtocolRoot();
     const env = makeEnv({ logRoot, protocolRoot, vendor: VENDOR });
     const python = await resolvePython(env);
+
+    // 「开关=开 时用串口就自动开页面」挂在这里：runCli 是所有工具的唯一咽喉。
+    // 里面不 await、不读输出、异常全吞——一次 serial_send 不能被它拖慢一毫秒。
+    maybeAutoOpen({ argv, python, env, entry: ENTRY, runtimeRoot });
 
     let stdout = '';
     let stderr = '';

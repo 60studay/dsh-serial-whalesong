@@ -130,22 +130,24 @@ def _open_browser(url):
         return False
 
 
-def open_web(paths, scene, port=0, mode="light", open_browser=None, wait_s=12.0):
+def open_web(paths, scene, port=0, mode="light", open_browser=False,
+             force_window=False, wait_s=12.0):
     """起一个后台网页实例并返回它的 URL。已经在跑就直接返回现有的。
 
-    `open_browser=None` = 没显式要求 → 听设置页的开关（默认关）。
-    显式 True/False 压过开关，见 uiprefs.resolve_open_browser。
+    两个参数必须分清（通讯板 12:48 / 12:49 定的语义）：
+
+    - `open_browser`：这次"从没有到有"起页面时，要不要顺手把窗口打开。
+    - `force_window`：**页面已经在跑**时也要弹一次。只有"用户亲口说要"才允许传 True；
+      自动路径（开关=开，由 send/read/control 触发）绝不能传——否则每条命令弹一个窗口，
+      正是用户骂过的"点一次弹一次"。
     """
-    from . import uiprefs
-    if open_browser is None:
-        open_browser = uiprefs.resolve_open_browser(paths, None)
     open_browser = bool(open_browser)
+    force_window = bool(force_window)
 
     existing = read_instance(paths, scene)
     if existing:
-        # 已经在跑：如果用户要"看看它"，就把现有页面的浏览器打开，而不是再起一个。
-        # 注意这里也要守开关——以前复用路径无条件弹窗，"点一次弹一次"就是这么来的。
-        if open_browser and existing.get("url"):
+        # 已经在跑：**只有 force_window 才弹**。复用路径无条件弹是第二处老缺陷。
+        if force_window and existing.get("url"):
             _open_browser(existing["url"])
         return {
             "running": True,

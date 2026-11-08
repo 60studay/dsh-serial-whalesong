@@ -490,14 +490,17 @@ def cmd_webctl(paths, args):
     scene = (args.scene or "").strip() or _default_scene(paths)
     action = args.action
     if action == "open":
-        # 弹不弹浏览器由「显式参数 > 设置页开关 > 默认关」决定，见 uiprefs.resolve_open_browser。
-        # 这里不写死 True：以前就是写死 True，导致说法和实际行为不一致（设置页的开关白设了）。
+        # 不传 flag = 不弹（"用户没说就别打扰"）。弹窗只有两个来源：
+        #   ① 用户/AI 显式要（--open-browser；页面已在跑再加 --force-browser）；
+        #   ② 开关=开 时由 send/read/control 触发的自动路径（--open-browser，不带 force）。
+        # 以前这里写死 True，把"用户没说"翻译成"要弹"，复用路径还无条件重弹，
+        # 于是每看一眼网页就弹一个窗口。
         return _ok(web_service.open_web(
             paths, scene,
             port=int(args.port or 0),
             mode=args.mode,
-            open_browser=uiprefs.resolve_open_browser(
-                paths, getattr(args, "open_browser", None))))
+            open_browser=bool(getattr(args, "open_browser", False)),
+            force_window=bool(getattr(args, "force_window", False))))
     if action == "close":
         return _ok(web_service.close_web(paths, scene))
     return _ok(web_service.status_web(paths, scene))
@@ -598,7 +601,7 @@ def _coerce(text):
 def cmd_web(paths, args):
     from .supervisor import run_web
     return run_web(paths, args.scene, args.port, args.mode,
-                   uiprefs.resolve_open_browser(paths, getattr(args, "open_browser", None)))
+                   bool(getattr(args, "open_browser", False)))
 
 
 def cmd_prefs(paths, args):
@@ -682,9 +685,11 @@ def build_parser():
     webctl.add_argument("--mode", default="light", choices=["light", "watch"])
     webctl.add_argument("--open-browser", dest="open_browser", action="store_true",
                         default=None,
-                        help="强制打开浏览器（压过设置页的开关）")
+                        help="这次起页面时顺手打开浏览器（只在'从没有到有'时生效）")
     webctl.add_argument("--no-browser", dest="open_browser", action="store_false",
-                        help="强制不打开浏览器（压过设置页的开关）")
+                        help="明确不打开浏览器（默认就是这条）")
+    webctl.add_argument("--force-browser", dest="force_window", action="store_true",
+                        help="页面已经在跑也弹一次——只有用户亲口说要才传")
 
     # UI 偏好：设置页读写。不带 --set 就是读。
     prefs = sub.add_parser("prefs")

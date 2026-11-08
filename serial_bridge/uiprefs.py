@@ -99,18 +99,6 @@ def write_prefs(paths, patch):
     return merged
 
 
-def resolve_open_browser(paths, explicit=None):
-    """决定"这次要不要弹浏览器"。
-
-    优先级（通讯板那张语义表就是这么定的）：
-      显式参数 > 偏好文件 > 默认关（False）
-    显式参数永远压过设置，这样 AI 明知"这次别弹"时能压掉。
-    """
-    if explicit is not None:
-        return bool(explicit)
-    return bool(read_prefs(paths).get("auto_open_browser", False))
-
-
 def _as_bool(value, fallback):
     """读文件时用：认不出来就用 fallback，不猜（文件可能被手改坏）。"""
     parsed = _coerce_bool(value)
