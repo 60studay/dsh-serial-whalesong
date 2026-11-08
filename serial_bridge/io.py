@@ -16,6 +16,7 @@ v3 起底层改成 Transport：这里只保留"业务级收发"（发一条、�
 import time
 
 from .errors import BridgeError
+from .locking import port_lock
 from .ports import resolve_port
 from .transport import create_transport
 
@@ -64,7 +65,7 @@ def _open_with_retry(cfg, device, baud=None, attempts=3, gap_s=0.25):
     raise last
 
 
-def transact(cfg, device, payload, baud=None, raw_bytes=None):
+def _transact_impl(cfg, device, payload, baud=None, raw_bytes=None):
     """发一条命令并读回显。
 
     raw_bytes 不为 None 时**原样发送这些字节**（十六进制模式、二进制协议），
@@ -150,7 +151,7 @@ def transact(cfg, device, payload, baud=None, raw_bytes=None):
             pass
 
 
-def send_only(cfg, device, payload, baud=None, raw_bytes=None):
+def _send_only_impl(cfg, device, payload, baud=None, raw_bytes=None):
     """只发不收：写出去就关。
 
     批量下命令（PID 调参之类连发几十条）时用——不必每条都等设备回话，
@@ -174,7 +175,7 @@ def send_only(cfg, device, payload, baud=None, raw_bytes=None):
     return {"submit_ms": submit_ms, "bytes": 0, "empty": True, "submitted": True}
 
 
-def drain(cfg, device, duration_ms=400, baud=None):
+def _drain_impl(cfg, device, duration_ms=400, baud=None):
     """只读不发：短暂开一次口，尽可能收干净。
 
     网页"轻模式"的 /poll 用它——不长期占口，但也能捡到设备主动上报的数据
@@ -256,3 +257,34 @@ def describe_no_response(resolved, cfg, baud=None):
         "已连接 %s，但设备无响应。" % resolved["device"],
         hint=hints,
     )
+
+
+# ── 对外入口：全部套上「按物理端口」的跨进程锁 ──────────────────────────────
+#
+# 为什么锁加在这一层：serial_send / 网页发送 / 定时发送 / 管家，
+# **四条路径最终都走这里**，加在 supervisor 或 cli 都会漏掉别的入口。
+#
+# 为什么要锁：两个 AI 同时用一个串口时会**串包**（A 拿到 B 的回包），
+# 不是"慢一点"的问题。实测 6 个并发、8 个请求，回包正确 0/8。
+
+
+def transact(cfg, device, payload, baud=None, raw_bytes=None):
+    """发一条命令并读回显（实现见 _transact_impl，这里只加跨进程锁）。"""
+    with port_lock(cfg, device):
+        return _transact_impl(cfg, device, payload, baud, raw_bytes)
+
+
+def send_only(cfg, device, payload, baud=None, raw_bytes=None):
+    """只发不收（实现见 _send_only_impl，这里只加跨进程锁）。"""
+    with port_lock(cfg, device):
+        return _send_only_impl(cfg, device, payload, baud, raw_bytes)
+
+
+def drain(cfg, device, duration_ms=400, baud=None):
+    """只读不发（实现见 _drain_impl，这里只加跨进程锁）。
+
+    drain 也要锁：它虽然不写字节，但会**读走**别的调用等着的那段回显，
+    这正是"串包"的另一半。
+    """
+    with port_lock(cfg, device):
+        return _drain_impl(cfg, device, duration_ms, baud)
