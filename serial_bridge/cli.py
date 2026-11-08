@@ -160,6 +160,15 @@ def cmd_send(paths, args):
         allowed, current = state.check_ai_allowed()
         if not allowed:
             reason = state.ai_block_reason() or ""
+            # 同样留痕：网页没开的时候，用户事后翻「状态轨道」也能看到这次被拒
+            try:
+                state.append_alert({
+                    "rule": "控制权拦截",
+                    "blame": "AI 尝试发送「%s」被拒（控制权在 %s）"
+                             % (args.command[:40], current.get("state")),
+                })
+            except Exception:
+                pass
             raise BridgeError(
                 "control_blocked",
                 "AI 现在不能发命令：控制权是 %s。" % current.get("state"),

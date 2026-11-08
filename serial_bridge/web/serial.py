@@ -37,6 +37,13 @@ class SerialMixin(object):
         if actor == "ai":
             allowed, current = self.state.check_ai_allowed()
             if not allowed:
+                # 被拒绝也要**留痕**：以前页面上一片安静，用户盯着屏幕什么都不会出现
+                # （"它在动，但被权限挡住了"和"它死了"看起来一模一样）。
+                self.state.append_alert({
+                    "rule": "控制权拦截",
+                    "blame": "AI 尝试发送「%s」被拒（控制权在 %s）"
+                             % (command[:40], current.get("state")),
+                })
                 raise BridgeError(
                     "control_blocked",
                     "控制权是 %s，AI 不能发命令。" % current.get("state"),

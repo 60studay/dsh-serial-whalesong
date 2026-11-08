@@ -347,7 +347,9 @@ import { initTips } from './js/tips.js';
     }
     var alertCount = alerts.length;
     if (alertCount > (lastStatus.alerts || 0)) {
-      pushEvent('warn', '告警：' + (alerts[alertCount - 1].rule || '?'));
+      var latest = alerts[alertCount - 1] || {};
+      // blame 是人话（"AI 尝试发送「V」被拒（控制权在 human）"），rule 只作兜底
+      pushEvent('warn', '告警：' + (latest.blame || latest.rule || '?'));
     }
     var runNow = !!data.watch_running;
     if (lastStatus.running !== null && lastStatus.running !== runNow) {

@@ -52,6 +52,17 @@ export function startViewerHeartbeat(opts) {
     becomeDead();
   }
 
+  /* 服务重启后自动活过来：以前这个标签一直停"已失效"，用户必须手动刷新
+     （用户 20:5x 就踩了：他把页面开着，我重启服务，他以为"看不到数据"是功能坏了）。
+     现在每 5 秒试一次同源 /viewer，通了就 reload。 */
+  function retrySelf() {
+    fetch(location.origin + '/viewer', {
+      mode: 'no-cors', cache: 'no-store'
+    }).then(function () {
+      window.location.reload();
+    }, function () { /* 还没起来，下次再试 */ });
+  }
+
   function becomeDead() {
     try { onDead(); } catch (e) { /* 标题改不动也不能挡住自救 */ }
     buildDeadBanner();
@@ -60,7 +71,16 @@ export function startViewerHeartbeat(opts) {
       var hint = document.getElementById('dead-close-hint');
       if (hint) hint.style.display = '';
     }, 200);
-    jumpToAliveInstance();
+    // 先**只重试自己**：同一个服务重启回来就自动恢复，别急着跳到别的实例上去。
+    // 以前是先 jump 再重试，结果"我的 8903 死了"会把你悄悄送到 8898 的生产页面
+    // （用户 20:5x 的困惑就是这么来的：他看到的页面和别人看到的不是同一个）。
+    let tries = 0;
+    setInterval(function () {
+      tries += 1;
+      retrySelf();
+      // 自己连试 6 次（30 秒）都不通，才去找别的还活着的实例
+      if (tries === 6) jumpToAliveInstance();
+    }, 5000);
   }
 
   function buildDeadBanner() {
@@ -75,7 +95,7 @@ export function startViewerHeartbeat(opts) {
 
     var text = document.createElement('span');
     text.style.flex = '1';
-    text.textContent = '这个页面已经失效：串口网页服务已关闭。下面两种办法，哪个都行';
+    text.textContent = '这个页面已经失效：串口网页服务已关闭。服务重启后本页会自动恢复；等不及就点右边关掉，或按下面提示处理。';
     bar.appendChild(text);
 
     var btn = document.createElement('button');
