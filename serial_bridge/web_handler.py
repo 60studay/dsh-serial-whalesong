@@ -80,6 +80,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
             # 外观（2.2）：背景图 / 不透明度 / 主色。运行期状态，存在 .runtime/ui-theme.json
             if path == "/theme":
                 return self._json({"ok": True, "theme": self.ctx["get_theme"]()})
+            # 本地图片（用户从电脑里选的）：从 .runtime/theme/ 里取，名字是审计过的
+            if path.startswith("/theme/image/"):
+                found = self.ctx["theme_image"](path.rsplit("/", 1)[-1])
+                if not found:
+                    return self._json({"ok": False, "error": {
+                        "kind": "not_found", "message": path}}, 404)
+                body, content_type = found
+                return self._send(200, body, content_type)
             # 看客心跳：网页每 5 秒 ping 一次，关窗口时补一个 /bye。
             # /viewer 只读，**不刷新时间戳**（否则 open_web 一问就变成"有人看着"）。
             if path == "/ping":
@@ -127,8 +135,22 @@ class BridgeHandler(BaseHTTPRequestHandler):
             return self._error(exc, 500)
 
     def do_POST(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
         try:
+            # 图片上传走**原始字节**，必须在 `_body()` 之前处理：
+            # _body() 会把 Content-Length 这么多字节当 JSON 读走，再读一次就永远等不到数据。
+            if path == "/theme/image":
+                name = (query.get("name") or [""])[0]
+                length = int(self.headers.get("Content-Length") or 0)
+                if not length:
+                    raise BridgeError("config", "没有收到图片数据。")
+                if length > 8 * 1024 * 1024 + 1024:
+                    raise BridgeError("config", "图片太大了（上限 8 MB）。")
+                raw = self.rfile.read(length)
+                return self._json(self.ctx["save_theme_image"](raw, name))
+
             body = self._body()
             if path == "/send":
                 return self._json(self.ctx["send"](

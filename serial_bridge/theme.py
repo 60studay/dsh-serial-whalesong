@@ -17,6 +17,7 @@
 页面会把它的值塞进 `background-image`，`javascript:` 之类必须在这儿就挡掉。
 """
 
+import hashlib
 import json
 import os
 import re
@@ -37,7 +38,7 @@ DEFAULTS = {
     "side_alpha": 1.0,   # 侧栏不透明度
 }
 
-_ALLOWED_PREFIXES = ("http://", "https://", "data:image/")
+_ALLOWED_PREFIXES = ("http://", "https://", "data:image/", "/theme/image/")
 _HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
@@ -122,7 +123,7 @@ def _check_bg_image(value, key="bg_image"):
         raise BridgeError("config", "背景图地址太长了（>4000 字符）。",
                           hint=["用 http(s) 链接，别把整张图塞成 data URI"])
     if not text.lower().startswith(_ALLOWED_PREFIXES):
-        raise BridgeError("config", "背景图地址只接受 http(s):// 或 data:image/…。",
+        raise BridgeError("config", "背景图只接受 http(s)://、data:image/… 或本机已上传的 /theme/image/…。",
                           hint=["例如 https://example.com/bg.jpg"])
     return text
 
@@ -146,3 +147,74 @@ def _check_accent(value, key="accent"):
     if not _HEX_RE.match(text):
         raise BridgeError("config", "%s 要写成 #rgb 或 #rrggbb，收到：%r" % (key, value))
     return text
+
+
+# ── 本地图片（用户："为什么只能填网址，不能从电脑里选图？"）──────────────────
+#
+# 浏览器**不允许** http 页面直接加载 `file:///C:/...`（安全模型），所以"填个本地路径"
+# 必然失败。能走通的路只有一条：用户选文件 → 浏览器把字节发给本地服务 → 服务存到
+# `<runtime_root>/theme/` → 页面从 `/theme/image/<名字>` 读回来。这也是对面原本建议的 C 方案。
+#
+# 存的位置是运行期目录（`.runtime/` 已 ignore），**不进仓库**；磁盘上只留最近几张，
+# 免得用户每换一次图就攒一张。
+
+IMAGE_EXTS = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "webp": "webp", "gif": "gif"}
+IMAGE_MAX_BYTES = 8 * 1024 * 1024
+IMAGE_KEEP = 8
+_NAME_RE = re.compile(r"^[0-9a-f]{16}\.(?:png|jpg|jpeg|webp|gif)$")
+
+
+def theme_dir(paths):
+    return os.path.join(paths["runtime_root"], "theme")
+
+
+def save_image(paths, data, ext):
+    """存一张图，返回可访问的 url 路径（`/theme/image/<名字>`）。
+
+    `ext` 由调用方从**文件名**取，这里再校验一次；内容不猜格式（够用，且不引入依赖）。
+    """
+    suffix = IMAGE_EXTS.get(str(ext or "").lower().lstrip("."))
+    if not suffix:
+        raise BridgeError("config", "只支持 png / jpg / webp / gif 图片。")
+    if not data:
+        raise BridgeError("config", "图片是空的。")
+    if len(data) > IMAGE_MAX_BYTES:
+        raise BridgeError("config", "图片太大了（上限 8 MB）。",
+                          hint=["先压一下，或者用外链地址"])
+    name = "%s.%s" % (hashlib.sha256(data).hexdigest()[:16], suffix)
+    directory = theme_dir(paths)
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, name)
+    if not os.path.exists(path):
+        with open(path, "wb") as handle:
+            handle.write(data)
+    _trim_images(directory, keep=IMAGE_KEEP)
+    return "/theme/image/" + name
+
+
+def image_path(paths, name):
+    """按名字取本地图片的绝对路径；名字不合法 / 不存在都返回 None。
+
+    名字只认"16 位 hex + 受支持的扩展名"，**不给任何拼路径的机会**（没有 `..`、没有分隔符）。
+    """
+    if not _NAME_RE.match(str(name or "")):
+        return None
+    path = os.path.join(theme_dir(paths), name)
+    return path if os.path.isfile(path) else None
+
+
+def _trim_images(directory, keep=IMAGE_KEEP):
+    """只留最近 keep 张，别让用户每换一次图就攒一张。"""
+    try:
+        files = [os.path.join(directory, f) for f in os.listdir(directory)
+                 if _NAME_RE.match(f)]
+        if len(files) <= keep:
+            return
+        files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+        for old in files[keep:]:
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+    except OSError:
+        pass

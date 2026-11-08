@@ -378,6 +378,24 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             from . import theme as theme_mod
             return {"ok": True, "theme": theme_mod.write_theme(self.paths, body)}
 
+        def save_theme_image(raw, name):
+            # 用户从电脑里选的图：存进 .runtime/theme/，返回一个能直接当 url() 用的路径
+            from . import theme as theme_mod
+            ext = os.path.splitext(str(name or ""))[1]
+            url = theme_mod.save_image(self.paths, raw, ext)
+            return {"ok": True, "url": url}
+
+        def theme_image(name):
+            from . import theme as theme_mod
+            path = theme_mod.image_path(self.paths, name)
+            if not path:
+                return None
+            ext = os.path.splitext(path)[1].lower().lstrip(".")
+            ctype = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                     "webp": "image/webp", "gif": "image/gif"}.get(ext, "application/octet-stream")
+            with open(path, "rb") as handle:
+                return handle.read(), ctype
+
         handler = type("BoundHandler", (BridgeHandler,), {})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
         self.httpd.daemon_threads = True
@@ -389,6 +407,8 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             "status": self.status,
             "get_theme": get_theme,
             "set_theme": set_theme,
+            "save_theme_image": save_theme_image,
+            "theme_image": theme_image,
             "ping": self.viewer_ping,
             "bye": self.viewer_bye,
             "viewer": self.viewer_state,

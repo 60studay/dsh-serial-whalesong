@@ -69,6 +69,38 @@ function save(patch, okText) {
   }).catch(function (e) { note('✗ ' + ((e && e.message) || e), 'bad'); });
 }
 
+
+/* 从电脑里选图：浏览器不允许页面直接读 `file:///C:/...`（安全模型），
+   所以只能"选文件 → 字节发给本地服务 → 服务存进 .runtime/theme/ → 页面读回来"。
+   这也是对面本来建议的 C 方案（图不进仓库）。 */
+function wirePicker(btnId, fileId, fieldId) {
+  var btn = $(btnId), file = $(fileId), field = $(fieldId);
+  if (!btn || !file || !field) return;
+  btn.addEventListener('click', function () { file.click(); });
+  file.addEventListener('change', function () {
+    var picked = file.files && file.files[0];
+    if (!picked) return;
+    if (picked.size > 8 * 1024 * 1024) { note('✗ 图片超过 8 MB', 'bad'); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      fetch('/theme/image?name=' + encodeURIComponent(picked.name), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: reader.result
+      }).then(function (resp) { return resp.json(); }).then(function (data) {
+        if (!data || !data.ok) {
+          var err = (data && data.error) || {};
+          note('✗ ' + (err.message || '上传失败'), 'bad');
+          return;
+        }
+        field.value = data.url;
+        note('✓ 图已存到本机，点「应用」生效', 'ok');
+      }).catch(function (e) { note('✗ ' + ((e && e.message) || e), 'bad'); });
+    };
+    reader.readAsArrayBuffer(picked);
+  });
+}
+
 export function initTheme() {
   var btnOpen = $('btnOpenTheme');
   if (!btnOpen) return;                 // 页面上没有这批控件就别折腾
@@ -102,6 +134,9 @@ export function initTheme() {
       side_image: '', side_color: '', side_alpha: 1, accent: ''
     }, '已恢复默认');
   });
+
+  wirePicker('btnBgPick', 'fileBg', 'themeBg');
+  wirePicker('btnSideBgPick', 'fileSideBg', 'themeSideBg');
 
   // 兜底钩子（对面 B 方案）：web/custom.css 存在就挂上，不存在就什么都不做。
   var link = document.createElement('link');

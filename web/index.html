@@ -222,8 +222,12 @@
     <h3>外观</h3>
     <div class="hint">只改这一台的样子；「恢复默认」一键回原样。</div>
     <div class="field">
-      <span>背景图地址（整页）</span>
-      <input type="text" id="themeBg" placeholder="https://…（留空 = 不铺）">
+      <span>背景图（整页）</span>
+      <div class="row">
+        <input type="text" id="themeBg" placeholder="https://…（留空 = 不铺）" style="flex:1">
+        <button class="ghost" id="btnBgPick" title="从电脑里选一张图">选图…</button>
+      </div>
+      <input type="file" id="fileBg" accept="image/*" hidden>
     </div>
     <div class="field">
       <span>背景不透明度</span>
@@ -235,7 +239,11 @@
     </div>
     <div class="field">
       <span>侧栏背景图</span>
-      <input type="text" id="themeSideBg" placeholder="https://…（留空 = 不铺）">
+      <div class="row">
+        <input type="text" id="themeSideBg" placeholder="https://…（留空 = 不铺）" style="flex:1">
+        <button class="ghost" id="btnSideBgPick" title="从电脑里选一张图">选图…</button>
+      </div>
+      <input type="file" id="fileSideBg" accept="image/*" hidden>
     </div>
     <div class="field">
       <span>侧栏底色 / 不透明度</span>
