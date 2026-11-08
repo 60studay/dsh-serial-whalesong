@@ -115,6 +115,18 @@ class WatchLoop(object):
         if source in ("timer", "rule"):
             cfg = dict(cfg)
             cfg["timeout_read_ms"] = int(cfg.get("autosend_timeout_ms") or 80)
+            # **首字节窗也要压**：没收到字节时 io.transact 是在 wait_first_byte_ms 处 break 的，
+            # 只压 timeout_read_ms（那管的是"收到字节后等静默"）等于没治。
+            # 对面实测：wait_first_byte_ms=1500（代码默认）时，设备不回话 500ms 就跑成 1591ms。
+            # 方案 A：首字节窗 ≤ 间隔-50，设备秒回照样拿到回显，不回也只拖到间隔附近。
+            try:
+                watch_cfg = (self.state.read() or {}).get("watch") or {}
+                interval_ms = int(watch_cfg.get("interval_ms") or 0)
+            except Exception:
+                interval_ms = 0
+            if interval_ms > 50:
+                current = int(cfg.get("wait_first_byte_ms") or 1500)
+                cfg["wait_first_byte_ms"] = max(50, min(current, interval_ms - 50))
         newline = serial_io.decode_newline(cfg.get("newline"), "\\r\\n")
         if self.running and self.ser is not None:
             # 原始字节模式不补换行，帧由调用方给全（见 io.transact 的说明）
