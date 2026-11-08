@@ -165,7 +165,13 @@ curl -X POST http://127.0.0.1:8898/theme -H "Content-Type: application/json" -d 
 }'
 ```
 
-### 3) 半透明玻璃感
+### 3) 注意：`extra` 与官方项冲突时，官方优先
+
+`extra` 里如果有跟官方项同名的变量（典型：`--accent`、`--panel-alpha`），
+**页面上还是以官方项为准**（先套 extra、后设官方项）。
+想完全接管就用 `custom.css` —— 它最后加载，没有任何优先级问题。
+
+### 4) 半透明玻璃感
 
 ```bash
 curl -X POST http://127.0.0.1:8898/theme -H "Content-Type: application/json" -d '{
@@ -175,7 +181,7 @@ curl -X POST http://127.0.0.1:8898/theme -H "Content-Type: application/json" -d 
 }'
 ```
 
-### 4) 彻底重画（custom.css）
+### 5) 彻底重画（custom.css）
 
 把文件放到 `<runtime_root>/theme/custom.css`，例如：
 
@@ -188,7 +194,7 @@ header { border-bottom: 1px solid var(--accent); }
 
 放好之后刷新页面即可；文件不存在页面就当没这回事（不会报错）。
 
-### 5) 从电脑选图
+### 6) 从电脑选图
 
 页面里点「选图…」就是在用 `POST /theme/image`；脚本里也可以：
 
