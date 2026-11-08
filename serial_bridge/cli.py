@@ -34,6 +34,7 @@ argparse 定义"四层。现在：
 import argparse
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 
@@ -149,6 +150,25 @@ def _forward_to_web(paths, scene_name, command, actor):
         return None
 
 
+def _warn_page_not_seeing(paths, scene_name):
+    """网页记录在、但连不上时，明确告诉调用方"这条不会出现在页面上"。"""
+    inst = os.path.join(paths["runtime_root"], "state",
+                        "%s.web.json" % _safe_name(scene_name))
+    if not os.path.exists(inst):
+        return
+    try:
+        with open(inst, encoding="utf-8") as handle:
+            url = str(json.load(handle).get("url") or "").rstrip("/")
+    except (OSError, ValueError):
+        return
+    if not url:
+        return
+    print("[提示] 场景「%s」的网页实例（%s）连不上：这条命令只在日志里，"
+          "**页面上不会显示**。想让它上页面，先重开网页："
+          "python bridge.py webctl --action open --scene %s"
+          % (scene_name, url, scene_name), file=sys.stderr)
+
+
 def cmd_send(paths, args):
     scene = _scene(paths, args.scene)
     cfg = scene.cfg
@@ -198,6 +218,11 @@ def cmd_send(paths, args):
 
     # 二级：网页在跑时统一走它的 /send，这样用户能在页面上看到 AI 发了什么。
     forwarded = _forward_to_web(paths, scene.name, args.command, actor)
+    if forwarded is None:
+        # 有网页记录但连不上 = 那个页面已经失效。这条命令只在日志里，**页面上不会出现**
+        # （用户 A 方案：所有智能体用同一个场景 + 确认页面在跑；这里至少给一句明确提示，
+        # 而不是让人以为"我发了它没收到"）。
+        _warn_page_not_seeing(paths, scene.name)
     if forwarded is not None:
         if not forwarded.get("ok"):
             err = forwarded.get("error") or {}
