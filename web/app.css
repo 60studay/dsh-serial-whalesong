@@ -280,6 +280,8 @@
   #controlstate {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 4px 12px; border-radius: 4px; font-weight: 600; font-size: 13px;
+    /* 换挡感：底色和字色渐变过去（0.35s），和下面那次"弹一下"配起来才像真的换了状态 */
+    transition: background-color .35s ease, color .35s ease;
   }
   #controlstate[data-state=human]  { background: rgba(63,185,80,.15); color: var(--human); }
   #controlstate[data-state=ai]     { background: rgba(47,129,247,.15); color: var(--ai); }
@@ -294,6 +296,12 @@
   @keyframes sbPop { 0% { transform: scale(1); } 35% { transform: scale(1.08); } 100% { transform: scale(1); } }
   #controlstate.pop { animation: sbPop .4s ease-out; }
   .sep { color: var(--line); }
+
+  /* 晕动症友好：「减少动态效果」开着就把动画/过渡全关（对面 18:20 提醒的）。
+     宁可少一点手感，也不要让人难受。 */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 
   /* 侧栏 */
   aside {

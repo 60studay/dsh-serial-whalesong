@@ -659,6 +659,16 @@ import { initPortPicker } from './js/pickport.js';
   });
 
   /* ── 启动 ─────────────────────────────────────────────── */
+  // AI 通道（AI ⇄ AI 留言板）已冻结（用户 11-07 决定"到时候再用"）。
+  // 标签藏起来之后还每 2 秒轮询就是纯浪费，还会在标题上跳未读数 —— 一起停掉。
+  var CHANNEL_ENABLED = false;
+
+  function startChannel() {
+    if (!CHANNEL_ENABLED) return;
+    pollChannel();
+    setInterval(pollChannel, 2000);
+  }
+
   api('/status').then(function (data) {
     if (data.ok) renderStatus(data);
     return api('/ports');
@@ -671,14 +681,12 @@ import { initPortPicker } from './js/pickport.js';
     tick();
     startPolling();
     startViewerHeartbeat({ onDead: markPageDead });
-    pollChannel();
-    setInterval(pollChannel, 2000);
+    startChannel();
   }).catch(function () {
     onRulesSaved(tick);
     loadRules();
     tick();
     startPolling();
     startViewerHeartbeat({ onDead: markPageDead });
-    pollChannel();
-    setInterval(pollChannel, 2000);
+    startChannel();
   });

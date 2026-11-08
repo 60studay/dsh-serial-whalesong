@@ -39,7 +39,11 @@
          是因为两者都是"滚动看历史"的形态，抢宽度不如切着看。 -->
     <div id="tabs">
       <button class="tab active" data-pane="serial">串口收发</button>
-      <button class="tab" data-pane="channel">AI 通道<span id="chanBadge" hidden>0</span></button>
+      <!-- AI 通道（AI ⇄ AI 留言板）**冻结中**：用户 11-07 决定"到时候再用"，
+           现在还没到用的时候，标签藏起来、页面里也不再轮询它。
+           恢复办法：删掉下面这个 hidden，并把 app.js 的 CHANNEL_ENABLED 改成 true。
+           接口与自检都还在（/channel 那几条照常过），只是界面上看不见。 -->
+      <button class="tab" data-pane="channel" hidden>AI 通道<span id="chanBadge" hidden>0</span></button>
     </div>
 
     <div id="paneSerial" class="pane">
