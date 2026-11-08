@@ -56,10 +56,13 @@
   }
   header .brand-mark {
     width: 26px; height: 26px; flex: none;
-    padding: 3px; box-sizing: border-box;
-    border-radius: 8px;
-    background: var(--accent);
-    object-fit: contain;
+    /* 不画底板：鲸鱼直接当前景色，颜色跟着主题走（浅色→深、深色→浅）。
+       用 mask 而不是 <img>，因为它能吃到 currentColor；图本身是白色透明稿，
+       mask 只取形状、颜色由 CSS 给。 */
+    background: currentColor;
+    -webkit-mask: url(/brand.png) center / contain no-repeat;
+    mask: url(/brand.png) center / contain no-repeat;
+    opacity: .92;
   }
   header .brand-name {
     font-size: 15px; font-weight: 600; color: var(--brand);

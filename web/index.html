@@ -15,7 +15,9 @@
        以后出英文版（Whalesong）直接换文字，宽度靠 CSS 自适应，
        长名字最多到 40% 屏宽然后省略号，不会把右边的状态胶囊挤掉。 -->
   <span class="brand">
-    <img class="brand-mark" src="/brand.png" alt="" width="26" height="26">
+    <!-- 鲸鱼用 CSS mask 上色：不画底板、颜色跟随主题文字色，深浅两套都干净。
+         mask 不被支持的浏览器（很老的）会只剩空白，但目标浏览器 Edge/Chrome 都支持。 -->
+    <span class="brand-mark" role="img" aria-label="鲸歌"></span>
     <span class="brand-name" id="brandName">鲸歌</span>
   </span>
   <span class="scene" id="sceneName">·</span>
