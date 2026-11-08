@@ -131,7 +131,9 @@
     flex: 1; width: 100%; background: var(--panel); color: var(--fg);
     border: 1px solid var(--line); border-radius: 4px; padding: 10px;
     font: inherit; overflow: auto; min-height: 120px; outline: none;
-    --tagw: 46px;
+    /* 徽章列定宽（1.16）：要放得下「设备 COM10」。
+       定宽是为了正文左边界永远对齐 —— 徽章文字变长就挤正文，竖排看起来会乱。 */
+    --tagw: 76px;
   }
   #console:empty::before {
     content: attr(placeholder); color: var(--muted); opacity: .55;
@@ -155,6 +157,8 @@
     padding: 0 4px; margin-bottom: 2px;
     border-radius: 3px; font-size: 11px; font-weight: 700; line-height: 1.5;
     text-align: center; user-select: none; justify-self: start;
+    /* 长口名（COM256）截断 + 悬停看全名，不许撑破布局 */
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .tag.ai   { background: rgba(47,129,247,.22); color: var(--ai);    border: 1px solid var(--ai); }
   .tag.human{ background: rgba(63,185,80,.22);  color: var(--human); border: 1px solid var(--human); }
@@ -165,6 +169,10 @@
   .tag.dev  { background: rgba(138,138,138,.18);color: var(--muted); border: 1px solid var(--line); }
   /* 命令文字给点颜色，和回显区分开——区分靠颜色和徽章，不靠 ">>" 前缀 */
   .tx { color: #9cdcfe; }
+
+  /* 回显位置的淡色说明（1.14）：「设备没回话」和「回显交给读线程」靠它分清。
+     样式要"轻"：它是注解，不该抢正文的注意力。 */
+  .note { color: var(--muted); font-size: 11px; font-style: italic; opacity: .9; }
   .rx { color: var(--fg); }
 
   /* ── 页签（串口收发 / AI 通道）────────────────────────── */

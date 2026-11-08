@@ -2,14 +2,22 @@ import { $, api, post, errText, errLine, pushEvent, nowText } from '../js/core.j
 import { autoGrow } from '../js/layout.js';
 import { loadRules, onRulesSaved } from './js/rules.js';
 import { pollChannel } from './js/channel.js';
+// 1.19 拆出去的两块（原来都在这个文件里，各 115 / 136 行）
+import { startViewerHeartbeat } from './js/viewer.js';
+import { initPortPicker } from './js/pickport.js';
 
 /* 鲸歌网页逻辑 · 收发区 + 规则 + 启动（R2b 第一步之后剩下的部分）。
  * 基础设施在 js/core.js、配色和拖动在 js/layout.js，这里靠 import 用它们。
- * 下一步（R2b 第二步）再把「通道」和「规则编辑」拆出去。
+ * 1.19：看客心跳/失效自救 → js/viewer.js；选口那组动作 → js/pickport.js。
  */
   var consoleEl = $('console');
   var dispMode = 'text';
   var lastState = null;
+  // 「检测占用」的结果：8 秒内优先显示它，之后回到后端的"状态未知"（1.19 从旧位置搬上来）
+  var probeResult = null;
+  // 当前解析到的口 + 页面是否已失效：徽章（1.16）和窗口标题（1.13）都要用
+  var curPort = '';
+  var pageDead = false;
   var pollTimer = null;
   var lastAlertsRaw = [];
 
@@ -56,6 +64,9 @@ import { pollChannel } from './js/channel.js';
     var tag = document.createElement('span');
     tag.className = 'tag ' + tagClass;
     tag.textContent = tagText;
+    // 口号可能很长（COM256 之类），徽章列是定宽的 → 截断 + 悬停看全名，
+    // 不许撑破布局（1.16 的验收里专门写了"长口名不撑破"）。
+    tag.title = tagText;
     var body = document.createElement('span');
     body.className = 'body';
     var stamp = document.createElement('span');
@@ -68,14 +79,46 @@ import { pollChannel } from './js/channel.js';
     return body;
   }
 
+  /** 设备徽章的文字：带上当前口号（1.16）。
+   *
+   *  为什么必须带口号：两块同型号板子（都是 CH340）时，`设备` 只说明"有东西回了"，
+   *  不说明是**哪块**回的。用户在诊断"我发给了谁"时，这一格是唯一的线索。
+   *  只影响**新起**的行：老行已经渲染好，不能回头改（那会让历史对不上）。
+   */
+  function devLabel() {
+    return curPort ? '设备 ' + curPort : '设备';
+  }
+
   /** 追加回显：贴到当前回显行；没有就新起一行（设备徽章）。 */
   function append(text) {
     if (!text) return;
     if (!curRx) {
-      curRx = newRow('dev', '设备');
+      curRx = newRow('dev', devLabel());
       curRx.classList.add('rx');
     }
     curRx.appendChild(document.createTextNode(text));
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+    trimConsole();
+  }
+
+  /** 回显位置的淡色说明（1.14）。
+   *
+   *  为什么需要：一条命令发出去、回显是空的，这里有**两种完全不同**的情况：
+   *    ① 回显交给读线程了，几十毫秒后补上来（监视模式，正常）
+   *    ② 设备真的没回话（可能没插、命令不理、波特率不对）
+   *  以前两种情况都只剩一行空白，用户根本分不清，只能猜。
+   *  分不清的代价是：明明在正常工作，却去查线。
+   */
+  function appendNote(text) {
+    if (!text) return;
+    if (!curRx) {
+      curRx = newRow('dev', devLabel());
+      curRx.classList.add('rx');
+    }
+    var span = document.createElement('span');
+    span.className = 'note';
+    span.textContent = text;
+    curRx.appendChild(span);
     consoleEl.scrollTop = consoleEl.scrollHeight;
     trimConsole();
   }
@@ -304,6 +347,23 @@ import { pollChannel } from './js/channel.js';
                    alerts: alertCount, running: runNow };
 
     lastState = data;
+    curPort = data.port || '';
+    setPageTitle();
+  }
+
+  /** 窗口标题：`鲸歌 · COM7 · 场景名`（1.13）。
+   *
+   *  为什么要它：用户同时开着好几个鲸歌页面（8898 一块板、8900 蓝牙），
+   *  标签栏里一律是"鲸歌"，切窗口时要一个一个点开才知道哪个是哪个。
+   *  带上口号和场景，标签栏就能直接认。
+   *
+   *  `[已失效]` 必须留在**最前面**：死页自救时它是标签栏里唯一的记号。
+   */
+  function setPageTitle() {
+    var parts = ['鲸歌'];
+    if (curPort) parts.push(curPort);
+    if (lastState && lastState.scene) parts.push(lastState.scene);
+    document.title = (pageDead ? '[已失效] ' : '') + parts.join(' · ');
   }
 
   /* ── 轮询 ─────────────────────────────────────────────── */
@@ -338,8 +398,15 @@ import { pollChannel } from './js/channel.js';
       appendTx(f.source || 'auto', f.tx);
       if (dispMode === 'hex') {
         if (f.hex) append(f.hex + '\n');
+        else if (f.rx_pending) appendNote('（回显交给读线程，稍后补上）');
       } else if (f.rx) {
         append(f.rx);
+      } else if (f.rx_pending) {
+        // 1.14：监视模式下回显走读线程，这一帧本来就没有回显，不是"设备没回"
+        appendNote('（回显交给读线程，稍后补上）');
+      } else {
+        // 轻模式同步收发：这一帧空了就是设备真的没回话
+        appendNote('（设备没回话）');
       }
     });
     if (dispMode === 'hex') {
@@ -361,119 +428,11 @@ import { pollChannel } from './js/channel.js';
     pollTimer = setInterval(tick, 700);
   }
 
-  /* ── 看客心跳 + 失效自救 ─────────────────────────────────────
-     服务活着：每 5 秒 ping 一次，别的一概不多做（不加横幅、不改标题）。
-     连续 3 次 ping 失败（≈15 秒）→ 这个标签已经没用了，它自己收拾：
-       ① 标题加「[已失效]」前缀，用户一眼能在标签栏里认出该关哪个
-       ② 顶部盖一条灰黄横幅（不是错误红）+「关闭本页」按钮
-       ③ 试 window.close()；200ms 后如果还活着，就明说浏览器不让脚本关别人开的标签
-       ④ 顺便探 8898~8907，哪个还活着就 location.replace 跳过去（死标签变活标签）
-     跳过去 / 确认关不掉之后**停止心跳和探测**，别让死页面在后台一直刷。
-
-     说清边界：这只覆盖"页面 JS 已经加载、服务后来死了"这一类。
-     服务从没起来过、或用户刷新过，浏览器显示的是它自己的错误页，脚本根本跑不了。 */
-  var FAILS_TO_DIE = 3;
-  // 8899 跳过：那是 DSH 自己的端口。no-cors 探活只认"有没有回应"，
-  // 探到 DSH 也算"通"，跳过去比留着死页更糟。
-  var PROBE_PORTS = [8898, 8900, 8901, 8902, 8903, 8904, 8905, 8906, 8907];
-
-  function startViewerHeartbeat() {
-    var fails = 0;
-    var stopped = false;
-    var timer = setInterval(function () {
-      if (stopped) return;
-      // api() 在 HTTP 层失败时 resolve({ok:false})，网络断了才 reject —— 两种都算没心跳
-      api('/ping').then(function (data) {
-        if (data && data.ok) { fails = 0; return; }
-        miss();
-      }, miss);
-    }, 5000);
-
-    function miss() {
-      if (stopped) return;
-      fails += 1;
-      if (fails < FAILS_TO_DIE) return;
-      stopped = true;
-      clearInterval(timer);
-      becomeDead();
-    }
-
-    window.addEventListener('pagehide', function () {
-      try { navigator.sendBeacon('/bye'); } catch (e) { /* 老浏览器没有就算了 */ }
-    });
-  }
-
-  function becomeDead() {
-    document.title = '[已失效] ' + document.title;
-    buildDeadBanner();
-    try { window.close(); } catch (e) { /* 被拦了，下面走降级提示 */ }
-    setTimeout(function () {
-      var hint = document.getElementById('dead-close-hint');
-      if (hint) hint.style.display = '';
-    }, 200);
-    jumpToAliveInstance();
-  }
-
-  function buildDeadBanner() {
-    if (document.getElementById('dead-banner')) return;
-    var bar = document.createElement('div');
-    bar.id = 'dead-banner';
-    bar.setAttribute('style',
-      'position:fixed;top:0;left:0;right:0;z-index:99999;background:#fffbeb;' +
-      'color:#7c2d12;border-bottom:1px solid #fcd34d;padding:10px 16px;' +
-      'font:13px/1.6 system-ui,-apple-system,sans-serif;display:flex;' +
-      'align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,.08)');
-
-    var text = document.createElement('span');
-    text.style.flex = '1';
-    text.textContent = '这个页面已经失效：串口网页服务已关闭。下面两种办法，哪个都行';
-    bar.appendChild(text);
-
-    var btn = document.createElement('button');
-    btn.textContent = '关闭本页';
-    btn.setAttribute('style',
-      'font:inherit;padding:4px 12px;border-radius:6px;cursor:pointer;' +
-      'border:1px solid #f59e0b;background:#f59e0b;color:#fff;font-weight:600');
-    btn.addEventListener('click', function () {
-      try { window.close(); } catch (e) { /* 被拦就按提示走 */ }
-      var hint = document.getElementById('dead-close-hint');
-      if (hint) hint.style.display = '';
-    });
-    bar.appendChild(btn);
-
-    var hint = document.createElement('span');
-    hint.id = 'dead-close-hint';
-    hint.style.display = 'none';
-    hint.style.fontSize = '12px';
-    hint.style.opacity = '.85';
-    hint.textContent = '浏览器不让脚本关掉别人开的标签，请按 Ctrl+W';
-    bar.appendChild(hint);
-
-    document.body.appendChild(bar);
-    document.body.style.paddingTop = '52px';
-  }
-
-  /* 探活：no-cors 只能判断"有没有回应"，所以只认我们自己的端口段；
-     探到一个就跳过去——跳完这个页面就不再是死的了。 */
-  function jumpToAliveInstance() {
-    var index = 0;
-    function next() {
-      if (index >= PROBE_PORTS.length) return;   // 一个都不通：留着横幅，不再刷
-      var port = PROBE_PORTS[index++];
-      var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
-      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 300) : null;
-      fetch('http://127.0.0.1:' + port + '/viewer', {
-        mode: 'no-cors', cache: 'no-store',
-        signal: ctrl ? ctrl.signal : undefined
-      }).then(function () {
-        if (timer) clearTimeout(timer);
-        window.location.replace('http://127.0.0.1:' + port + '/');
-      }, function () {
-        if (timer) clearTimeout(timer);
-        next();
-      });
-    }
-    next();
+  /* 服务死了：标题加 `[已失效]` 前缀（最前面，标签栏里才认得出）。
+     标题的拼法只有 setPageTitle 一处，所以这里改状态再重画，不手拼字符串。 */
+  function markPageDead() {
+    pageDead = true;
+    setPageTitle();
   }
 
   /* ── 事件 ─────────────────────────────────────────────── */
@@ -605,141 +564,14 @@ import { pollChannel } from './js/channel.js';
   $('watchCommand').addEventListener('change', pushWatch);
   $('watchInterval').addEventListener('change', pushWatch);
 
-  /* ── AI 自动选择 ─────────────────────────────────────────
-   *  用户反馈"按下去特别没有实感"：原来按钮不变、下拉框不动，
-   *  只有一行灰字，看不出到底选没选上。现在给三重反馈：
-   *  1) 按钮自己变成"检测中…"并脉动（表示真的在干活）
-   *  2) 结果文字变绿/变红（一眼分清成没成）
-   *  3) 下拉框真的跳到选中的那一项并闪一下绿边（最关键的确认）
-   */
-  $('btnAuto').addEventListener('click', function () {
-    var btn = $('btnAuto');
-    var reason = $('autoReason');
-    var original = btn.textContent;
-    if (btn.disabled) return;
-
-    btn.disabled = true;
-    btn.classList.add('working');
-    btn.textContent = '检测中…';
-    reason.className = 'hint';
-    reason.textContent = '正在按场景规则扫描串口…';
-
-    function restore() {
-      btn.disabled = false;
-      btn.classList.remove('working');
-      btn.textContent = original;
-    }
-    function fail(error) {
-      restore();
-      reason.className = 'hint bad';
-      reason.textContent = '✗ ' + errLine(error);
-      pushEvent('bad', '自动选择失败：' + errLine(error));
-    }
-
-    post('/autodetect', {}).then(function (data) {
-      if (!data.ok) { fail(data.error); return; }
-      var port = data.port;
-
-      // 3) 让下拉框真的跳到这一项（先跳，用户马上看见变化）
-      var sel = $('portSelect');
-      var existed = false;
-      for (var i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].value === port) { sel.selectedIndex = i; existed = true; break; }
-      }
-      if (!existed && port) {   // 端口是新的：临时插进去，refreshPorts 会补全
-        var o = document.createElement('option');
-        o.value = port; o.textContent = port;
-        sel.appendChild(o);
-        sel.value = port;
-      }
-      sel.classList.remove('flash');
-      void sel.offsetWidth;      // 强制重排，动画才能重放
-      sel.classList.add('flash');
-
-      reason.className = 'hint ok';
-      reason.textContent = '✓ 选中 ' + port + '（' + data.reason + '）' +
-        (data.note ? '；' + data.note : '');
-      pushEvent('', '自动选择：' + port + '（' + data.reason + '）');
-
-      post('/reconnect', { com: port, baud: parseInt($('baudSelect').value, 10) || 0 })
-        .then(function (r) {
-          restore();
-          if (!r.ok) {
-            reason.className = 'hint bad';
-            reason.textContent = '✗ 已选中 ' + port + '，但连接失败：' + errLine(r.error);
-            pushEvent('bad', '自动选择后连接失败：' + errLine(r.error));
-            return;
-          }
-          preferredPort = port;      // 让重建下拉框时别再跳回旧口
-          refreshPorts(); tick();
-        })
-        .catch(function () { restore(); });
-    }).catch(function (e) { fail({ message: '请求失败：' + (e && e.message || e) }); });
-  });
-
-  /* ── 回到自动识别（1.18）────────────────────────────────────
-     只清 state 里那个"这次选的串口"，config.json 一个字不动。
-     清完可能还是找不到口（拔了/换了口），那也是成功——用户要的是
-     "别再用我刚选的那个"，不是"必须马上找到一个"。 */
-  $('btnAutoPort').addEventListener('click', function () {
-    var btn = $('btnAutoPort');
-    var reason = $('autoReason');
-    if (btn.disabled) return;
-    btn.disabled = true;
-    post('/port/auto', {}).then(function (data) {
-      btn.disabled = false;
-      if (!data.ok) {
-        pushEvent('bad', '回到自动识别失败：' + errLine(data.error));
-        return;
-      }
-      if (data.port) {
-        reason.className = 'hint ok';
-        reason.textContent = '✓ 已回到自动识别：' + data.port +
-          (data.source ? '（' + data.source + '）' : '');
-        pushEvent('', '回到自动识别：' + data.port);
-        // 下拉框也要跟着跳：否则它会停在上次手动选的那一项（COM7），
-        // 页头写着 COM10、下拉框标着 COM7 —— 用户一看就懵。
-        preferredPort = data.port;
-      } else {
-        reason.className = 'hint bad';
-        reason.textContent = '✗ ' + (data.note || '按配置暂时找不到串口');
-        pushEvent('bad', '回到自动识别：按配置暂时找不到串口');
-      }
-      refreshPorts();
-      tick();
-    }).catch(function (e) {
-      btn.disabled = false;
-      pushEvent('bad', '回到自动识别失败：' + ((e && e.message) || e));
-    });
-  });
-
-  /* ── 显式探测串口占用（只有点了才真的 open 一次）────── */
-  // 轻模式默认不碰串口，所以状态栏只能显示"状态未知"。
-  // 用户想知道"是不是被串口助手占了"，点一下这里，后端才真去开一次。
-  var probeResult = null;
-
-  $('portOwner').addEventListener('click', function () {
-    post('/port/probe', {}).then(function (data) {
-      if (!data.ok) { pushEvent('bad', '检测占用失败：' + errLine(data.error)); return; }
-      probeResult = { at: Date.now(), owner: data.owner, detail: data.detail };
-      var label = { ours: '被本网页占用', other: '被其他程序占用',
-                    free: '可用', unknown: '状态未知' }[data.owner] || data.owner;
-      pushEvent('', '检测占用：' + label + (data.detail ? '（' + data.detail + '）' : ''));
-      tick();
-    });
-  });
-
-  ['portSelect', 'baudSelect'].forEach(function (id) {
-    $(id).addEventListener('change', function () {
-      post('/reconnect', {
-        com: $('portSelect').value,
-        baud: parseInt($('baudSelect').value, 10) || 0
-      }).then(function (data) {
-        if (!data.ok) { pushEvent('bad', errLine(data.error)); return; }
-        pushEvent('', '已重连 ' + data.port + ' @ ' + data.baud);
-        tick();
-      });
-    });
+  /* ── 选口那组动作（1.19 移进 js/pickport.js）──────────────
+     那边只负责"点按钮之后发什么请求"；刷新下拉框和跑轮询留在这里，
+     因为它们要读 lastState —— 那是本文件的状态，不该跨文件去拿。 */
+  initPortPicker({
+    onPicked: function (port) { preferredPort = port; },
+    onProbe: function (result) { probeResult = result; },
+    refreshPorts: refreshPorts,
+    tick: tick
   });
 
   /* ── 暂停 / 恢复 与 彻底退出 分开 ─────────────────────── */
@@ -782,7 +614,7 @@ import { pollChannel } from './js/channel.js';
     loadRules();
     tick();
     startPolling();
-    startViewerHeartbeat();
+    startViewerHeartbeat({ onDead: markPageDead });
     pollChannel();
     setInterval(pollChannel, 2000);
   }).catch(function () {
@@ -790,7 +622,7 @@ import { pollChannel } from './js/channel.js';
     loadRules();
     tick();
     startPolling();
-    startViewerHeartbeat();
+    startViewerHeartbeat({ onDead: markPageDead });
     pollChannel();
     setInterval(pollChannel, 2000);
   });

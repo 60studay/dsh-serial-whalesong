@@ -225,6 +225,25 @@ def run_checks(base, original):
           "export" in core_text, core_text[:60])
     check("GET /js/rules.js  有导出", "export function loadRules" in rules_text,
           rules_text[:60])
+
+    # 1.19 拆出去的两个模块：少一个文件、或者 app.js 忘了 import，
+    # 页面就是**整片白屏**（浏览器只在控制台报 404，用户什么都看不到）。
+    viewer_status, viewer_text = http_get(base, "/js/viewer.js")
+    pick_status, pick_text = http_get(base, "/js/pickport.js")
+    check("GET /js/viewer.js   返回 200", viewer_status == 200, "status=%s" % viewer_status)
+    check("GET /js/pickport.js 返回 200", pick_status == 200, "status=%s" % pick_status)
+    check("app.js 真的 import 了 viewer.js",
+          "./js/viewer.js" in js_text and "startViewerHeartbeat" in js_text, js_text[:80])
+    check("app.js 真的 import 了 pickport.js",
+          "./js/pickport.js" in js_text and "initPortPicker" in js_text, js_text[:80])
+    check("viewer.js 有导出", "export function startViewerHeartbeat" in viewer_text,
+          viewer_text[:60])
+    check("pickport.js 有导出", "export function initPortPicker" in pick_text,
+          pick_text[:60])
+    # 1.16 徽章列定宽：徽章里要塞「设备 COM10」，宽度靠这个变量；
+    # 去掉它徽章会随文字变宽，竖排正文左边界就开始跳。
+    check("app.css 里徽章列仍是定宽变量", "--tagw" in css_text, css_text[:60])
+    check("app.css 有回显说明的样式（1.14）", ".note" in css_text, "")
     check("GET /js/channel.js 有导出", "export function pollChannel" in chan_text,
           chan_text[:60])
     check("页面用 type=module 加载",

@@ -28,6 +28,7 @@
 import io
 import os
 import sys
+import time
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -40,6 +41,24 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WARN_LINES = 400
 FAIL_LINES = 600
 HARD_LINES = 800
+
+# 倒计时（1.19）：距硬上限只剩这么点余量就判失败。
+# 为什么不等撞到 800 才红：那时候下一个功能随手加 30 行就撞线，
+# 根本没有"停下来拆"的余地。留 100 行缓冲，红的时候还站得住。
+COUNTDOWN_MARGIN = 100
+
+# 结构账本：把"600 行以上的文件"按天记一行，趋势要能看见（1.19）
+LEDGER = os.path.join(HERE, "_需求文档", "结构账本.md")
+LEDGER_MIN = 600
+LEDGER_HEADER = """# 结构账本（`selfcheck_size.py` 自动追加，别手改）
+
+> 每次跑自检，把 **600 行以上**的文件和行数记一行。
+> 目的不是记账，是**看见趋势**：拆分有效就往下走，哪天悄悄涨回来，打开这一页就能发现。
+> 同样的数字不会重复追加 —— 否则每跑一次自检就多一行，反而看不清趋势。
+
+| 日期 | 600 行以上（行数） | 这些文件合计 |
+|---|---|---|
+"""
 
 # 只量这些后缀
 SUFFIXES = (".py", ".js", ".html", ".css")
@@ -102,6 +121,37 @@ def count_lines(path):
         return None
 
 
+def record_ledger(rows):
+    """把"600 行以上的文件 + 行数 + 日期"追加一行到《结构账本.md》（1.19）。
+
+    同日同样的数字不重复追加：这个脚本每次跑都会调用，重复记录会把趋势冲淡。
+    写失败不抛异常 —— 一个记账动作不该让守卫本身失败。
+    """
+    big = [(rel, n) for n, rel in rows if n >= LEDGER_MIN]
+    if not big:
+        return
+    big.sort(key=lambda item: -item[1])
+    summary = " / ".join("%s %d" % (rel, n) for rel, n in big)
+    row = "| %s | %s | %d |" % (time.strftime("%Y-%m-%d"), summary,
+                                sum(n for _, n in big))
+    try:
+        existing = ""
+        if os.path.exists(LEDGER):
+            with io.open(LEDGER, encoding="utf-8", errors="replace") as handle:
+                existing = handle.read()
+        if not existing.strip():
+            existing = LEDGER_HEADER
+        lines = [ln for ln in existing.splitlines() if ln.strip()]
+        if lines and lines[-1] == row:
+            print("  （结构账本：和上次一样，不重复记）")
+            return
+        with io.open(LEDGER, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(existing.rstrip("\n") + "\n" + row + "\n")
+        print("  结构账本：+1 行（%d 个文件 ≥ %d 行）" % (len(big), LEDGER_MIN))
+    except Exception as exc:      # 记账失败不影响守卫结论
+        print("  （结构账本写不进去：%s）" % exc)
+
+
 def main(argv):
     strict = "--strict" in argv
     list_only = "--list" in argv
@@ -156,7 +206,28 @@ def main(argv):
     check("没有新增或变大的超标文件", not hard,
           "超标：%s" % ", ".join("%s(%d)" % (r, n) for n, r in hard[:6]))
 
-    # ── 2b. 棘轮：登记的行数只许降不许升 ────────────────────────────────
+    # ── 2b. 倒计时：离硬上限只剩这么点余量就判 FAIL（1.19）───────────────
+    print("\n[倒计时：离 %d 行的硬上限还剩多少]" % HARD_LINES)
+    countdown = []
+    for lines, rel in rows:
+        if rel in KNOWN_OVERSIZE or lines > HARD_LINES:
+            continue
+        left = HARD_LINES - lines
+        if left < COUNTDOWN_MARGIN:
+            countdown.append((lines, rel, left))
+            print("  ✗ %-32s %d 行（只剩 %d 行余量）" % (rel, lines, left))
+        elif left < COUNTDOWN_MARGIN * 2:
+            print("  ! %-32s %d 行（剩 %d 行）" % (rel, lines, left))
+    if not countdown:
+        print("  （都对硬上限还有 %d 行以上余量）" % COUNTDOWN_MARGIN)
+    check("没有文件逼近硬上限（余量 < %d 行）" % COUNTDOWN_MARGIN, not countdown,
+          "逼近：%s" % ", ".join("%s(%d)" % (r, n) for n, r, _ in countdown[:6]))
+
+    # ── 2c. 结构账本：600 行以上的文件按天记一行，趋势要能看见 ────────────
+    print("\n[结构账本]")
+    record_ledger(rows)
+
+    # ── 2d. 棘轮：登记的行数只许降不许升 ────────────────────────────────
     print("\n[棘轮：登记额度要写清理由]")
     for rel, info in sorted(KNOWN_OVERSIZE.items()):
         has_reason = bool(str(info.get("reason") or "").strip())

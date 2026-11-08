@@ -137,18 +137,23 @@ def main():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
-    print("\n[6] 失效标签自救（静态检查 web/app.js）")
+    # 1.19 之后这一整块从 app.js 搬到了 js/viewer.js：
+    # 静态检查跟着搬家，否则"代码还在、自检找不到"会变成假失败。
+    print("\n[6] 失效标签自救（静态检查 web/js/viewer.js）")
     app_js = _read(os.path.join(HERE, "web", "app.js"))
+    viewer_js = _read(os.path.join(HERE, "web", "js", "viewer.js"))
+    # 标题的规矩在 app.js（setPageTitle），自救流程在 viewer.js
     check("标题加 [已失效] 前缀", "[已失效]" in app_js)
-    check("有「关闭本页」按钮", "关闭本页" in app_js)
-    check("试 window.close()", "window.close()" in app_js)
-    check("关不掉时说 Ctrl+W", "Ctrl+W" in app_js)
-    check("连续 3 次失败才判死", "FAILS_TO_DIE = 3" in app_js)
-    check("探测端口含 8898 和 8907", "8898" in app_js and "8907" in app_js)
-    check("探测超时 300ms", "}, 300)" in app_js)
-    check("探测用 no-cors", "mode: 'no-cors'" in app_js)
-    check("判死后停止心跳", "clearInterval(timer)" in app_js)
-    check("跳过 8899（DSH 自己的口）", "8899" not in app_js.split("PROBE_PORTS = ")[1][:80])
+    check("有「关闭本页」按钮", "关闭本页" in viewer_js)
+    check("试 window.close()", "window.close()" in viewer_js)
+    check("关不掉时说 Ctrl+W", "Ctrl+W" in viewer_js)
+    check("连续 3 次失败才判死", "FAILS_TO_DIE = 3" in viewer_js)
+    check("探测端口含 8898 和 8907", "8898" in viewer_js and "8907" in viewer_js)
+    check("探测超时 300ms", "}, 300)" in viewer_js)
+    check("探测用 no-cors", "mode: 'no-cors'" in viewer_js)
+    check("判死后停止心跳", "clearInterval(timer)" in viewer_js)
+    check("跳过 8899（DSH 自己的口）",
+          "8899" not in viewer_js.split("PROBE_PORTS = ")[1][:80])
 
     print("\n[7] maybeAutoOpen 漏传参数不抛（P2 回归）")
     auto_js = _read(os.path.join(HERE, "helpers", "autoopen.js"))
