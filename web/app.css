@@ -238,12 +238,17 @@
   main { flex: 1; display: flex; min-height: 0; }
 
   /* ── 页头配色按钮（一个图标循环切换）────────────────── */
+  /* 配色按钮（1.32 用户反馈"我怎么好像没看到"）：
+     原来是 transparent + 淡边框 + muted 图标 —— 旁边「收起」有了面之后，它看起来像个装饰。
+     现在跟次级按钮同一套"面"：浅底 + 更亮的边 + 内高光 + 微投影，图标用前景色。 */
   .theme-btn {
-    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    background: var(--btn-face); color: var(--fg);
+    border: 1px solid var(--line-strong);
+    box-shadow: inset 0 1px 0 var(--btn-highlight), 0 1px 2px var(--btn-shadow);
     border-radius: 4px; padding: 2px 8px; font-size: 14px; line-height: 1.4;
     cursor: pointer; min-width: 32px;
   }
-  .theme-btn:hover { color: var(--fg); background: var(--panel); }
+  .theme-btn:hover { background: var(--hover-bg); border-color: var(--muted); }
   /* 只有图标没有文字，键盘聚焦必须看得见 */
   .theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
