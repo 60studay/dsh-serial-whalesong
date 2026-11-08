@@ -22,7 +22,7 @@ import urllib.request
 from .errors import BridgeError
 from .state import _safe_name
 
-DEFAULT_PORT = 8898          # 8899 被 DSH Web GUI 占着，默认从 8898 起
+DEFAULT_PORT = 8898          # 8899 被 DSH Web GUI 占着，默认从 8898 起；被占就往后找
 PORT_SEARCH_LIMIT = 20
 
 

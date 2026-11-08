@@ -32,7 +32,7 @@ from .transport import describe_transport as transport_describe
 # BAUD_CHOICES 定义在 ports.py（路由层 web_handler 也要用，不该反过来依赖这里）
 from .ports import resolve_port, scan_ports, guess_port
 
-DEFAULT_PORT = 8899
+DEFAULT_PORT = 8898   # 兜底：网页服务的默认口；**8899 是 DSH 自己的**，别用它
 
 
 from .config import load_scene

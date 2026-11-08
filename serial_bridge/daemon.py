@@ -34,7 +34,8 @@ from .rule_checker import RuleChecker
 from .state import SharedState, STATE_PAUSED, _safe_name
 from .transport import create_transport, describe_transport
 
-DEFAULT_PORT = 8898
+DEFAULT_PORT = 8898   # 管家自己的 HTTP 口（和网页同一个默认值：两者不会同时占——
+                     # web_service 会从 8898 往后找空闲口，谁先起谁占）
 DEFAULT_IDLE_S = 600
 # 判定窗口：发送后这么久内到达的字节归同一条命令（覆盖异步 FAULT）
 JUDGE_WINDOW_S = 1.0
