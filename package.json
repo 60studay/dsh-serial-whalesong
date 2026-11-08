@@ -17,7 +17,7 @@
     "./client": "./client.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
+    "./icon": "./icon.png"
   },
   "files": [
     "index.js",
@@ -28,7 +28,7 @@
     "package.json",
     "README.md",
     "LICENSE",
-    "icon.svg",
+    "icon.png",
     "locale/*.json",
     "helpers/*.js",
     "tools/*.js",
