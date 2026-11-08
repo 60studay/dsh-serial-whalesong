@@ -1,4 +1,24 @@
 /* 鲸歌网页样式（R2：从 index.html 搬出来的，纯搬移） */
+  /* ── 字体（1.24：A + B，不做中文整套字体）───────────────
+     A = 界面用**系统字体栈**：不占体积、各平台都是"本地最舒服"的那套。
+     B = 命令 / 回显 / 时间戳用**等宽**：JetBrains Mono（OFL，本地 woff2 子集 ~21KB×2）。
+     中文整套字体（思源黑体等）2~8 MB，进插件不值 —— 交给系统字体栈。
+     **只在这里写字体名**：其余规则一律 var(--font-ui) / var(--font-mono)，
+     将来做皮肤（2.2）时改这两个值就够了。 */
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;      /* 字体没到时先用系统等宽显示，不许白屏等 */
+  }
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
   /* ── 主题 ────────────────────────────────────────────────
      默认跟随系统（prefers-color-scheme）；用户可以在页头三态切换里
      强制深/亮（写进 <html data-theme> 并存 localStorage）。
@@ -8,6 +28,42 @@
     --muted: #8a8a8a; --accent: #0e639c; --accent-hover: #1177bb;
     --human: #3fb950; --ai: #2f81f7; --paused: #d29922; --danger: #f85149;
     --btn-fg: #fff; --brand: #4ec9b0;
+
+    /* 字体族（1.24；只有这里能出现字体名） */
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei",
+               "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", Consolas, "Cascadia Mono", "Microsoft YaHei",
+                 ui-monospace, monospace;
+
+    /* 徽章 / 胶囊底色（这些原来是散在规则里的 rgba()，1.24 一并提成变量，
+       将来换皮肤只改写这里） */
+    --tag-ai-bg: rgba(47, 129, 247, .22);
+    --tag-human-bg: rgba(63, 185, 80, .22);
+    --tag-auto-bg: rgba(210, 153, 34, .22);
+    --tag-rule-bg: rgba(220, 53, 69, .22);
+    --tag-rule-fg: #ff7b7b;
+    --tag-rule-line: #a83232;
+    --tag-dev-bg: rgba(138, 138, 138, .18);
+    --pill-human-bg: rgba(63, 185, 80, .15);
+    --pill-ai-bg: rgba(47, 129, 247, .15);
+    --pill-paused-bg: rgba(210, 153, 34, .15);
+    --hover-bg: rgba(127, 127, 127, .18);
+    --shadow-pop: 0 6px 18px rgba(0, 0, 0, .28);
+    --tx-fg: #9cdcfe;
+    --danger-bg: rgba(248, 81, 73, .14);
+    --hover-inverse: rgba(255, 255, 255, .10);
+    --tab-hover-bg: #2a2a2a;
+    --input-bg: #1d1d1d;
+    --err-fg: #ff8a8a;
+    --err-line: #8b2a2a;
+    --switch-off-bg: #444;
+    --switch-knob: #ccc;
+    --overlay-bg: rgba(0, 0, 0, .6);
+
+    /* 2.2 皮肤系统要用的变量：**现在就定义、不实现**（名字先定死，避免以后改名） */
+    --bg-image: none;
+    --bg-alpha: 1;
+    --logo: currentColor;
   }
   :root[data-theme="light"] {
     --bg: #ffffff; --panel: #f6f6f6; --line: #d0d0d0; --fg: #1f1f1f;
@@ -39,7 +95,7 @@
   html, body { height: 100%; margin: 0; }
   body {
     background: var(--bg); color: var(--fg);
-    font: 14px/1.5 Consolas, "Cascadia Mono", "Microsoft YaHei", monospace;
+    font-family: var(--font-ui); font-size: 14px; line-height: 1.5;
     display: flex; flex-direction: column;
   }
   header {
@@ -62,7 +118,7 @@
     /* 不画底板：鲸鱼直接当前景色，颜色跟着主题走（浅色→深、深色→浅）。
        用 mask 而不是 <img>，因为它能吃到 currentColor；图本身是白色透明稿，
        mask 只取形状、颜色由 CSS 给。 */
-    background: currentColor;
+    background: var(--logo);   /* 颜色走变量（2.3：切皮肤要让 logo 跟着变） */
     -webkit-mask: url(/brand.png) center / contain no-repeat;
     mask: url(/brand.png) center / contain no-repeat;
     opacity: .92;
@@ -84,7 +140,7 @@
     border: 1px solid var(--line); color: var(--muted);
   }
   #alertbar {
-    display: none; padding: 8px 14px; background: rgba(248,81,73,.14);
+    display: none; padding: 8px 14px; background: var(--danger-bg);
     border-bottom: 1px solid var(--danger); color: var(--danger); font-size: 13px;
     align-items: center; gap: 10px;
   }
@@ -97,7 +153,7 @@
     min-width: 32px; min-height: 32px; padding: 0 8px;
     font-size: 20px; line-height: 1; cursor: pointer; border-radius: 4px;
   }
-  #alertbarClose:hover { color: #fff; background: rgba(255,255,255,.10); }
+  #alertbarClose:hover { color: var(--btn-fg); background: var(--hover-inverse); }
   main { flex: 1; display: flex; min-height: 0; }
 
   /* ── 页头配色按钮（一个图标循环切换）────────────────── */
@@ -133,7 +189,8 @@
   #console {
     flex: 1; width: 100%; background: var(--panel); color: var(--fg);
     border: 1px solid var(--line); border-radius: 4px; padding: 10px;
-    font: inherit; overflow: auto; min-height: 120px; outline: none;
+    font-family: var(--font-mono); font-size: 13px;
+    overflow: auto; min-height: 120px; outline: none;
     /* 徽章列定宽（1.16）：要放得下「设备 COM10」。
        定宽是为了正文左边界永远对齐 —— 徽章文字变长就挤正文，竖排看起来会乱。 */
     --tagw: 76px;
@@ -151,6 +208,7 @@
   @keyframes sbIn { from { opacity: .35; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
   .ln { animation: sbIn .16s ease-out both; }
   .ln > .t {
+    font-family: var(--font-mono);
     color: var(--muted); font-size: 11px; line-height: 1.6;
     white-space: nowrap; font-variant-numeric: tabular-nums;
     justify-self: end;      /* 右对齐成栏 */
@@ -168,15 +226,15 @@
     /* 长口名（COM256）截断 + 悬停看全名，不许撑破布局 */
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .tag.ai   { background: rgba(47,129,247,.22); color: var(--ai);    border: 1px solid var(--ai); }
-  .tag.human{ background: rgba(63,185,80,.22);  color: var(--human); border: 1px solid var(--human); }
-  .tag.auto { background: rgba(210,153,34,.22); color: var(--paused);border: 1px solid var(--paused); }
+  .tag.ai   { background: var(--tag-ai-bg); color: var(--ai);    border: 1px solid var(--ai); }
+  .tag.human{ background: var(--tag-human-bg);  color: var(--human); border: 1px solid var(--human); }
+  .tag.auto { background: var(--tag-auto-bg); color: var(--paused);border: 1px solid var(--paused); }
   /* 「规则」用红色：规则自动发命令 = 用户没直接操作、系统自己动手，
      是最需要被看见的一类。以前它和「定时」共用黄色，等于把自主行为藏起来了。 */
-  .tag.rule { background: rgba(220,53,69,.22); color: #ff7b7b;    border: 1px solid #a83232; }
-  .tag.dev  { background: rgba(138,138,138,.18);color: var(--muted); border: 1px solid var(--line); }
+  .tag.rule { background: var(--tag-rule-bg); color: var(--tag-rule-fg); border: 1px solid var(--tag-rule-line); }
+  .tag.dev  { background: var(--tag-dev-bg);color: var(--muted); border: 1px solid var(--line); }
   /* 命令文字给点颜色，和回显区分开——区分靠颜色和徽章，不靠 ">>" 前缀 */
-  .tx { color: #9cdcfe; }
+  .tx { color: var(--tx-fg); }
 
   /* 回显位置的淡色说明（1.14）：「设备没回话」和「回显交给读线程」靠它分清。
      样式要"轻"：它是注解，不该抢正文的注意力。 */
@@ -189,11 +247,11 @@
     background: transparent; border: 1px solid var(--line); color: var(--muted);
     padding: 5px 14px; border-radius: 5px 5px 0 0; font-size: 13px;
   }
-  .tab:hover:not(.active) { color: var(--fg); background: #2a2a2a; }
+  .tab:hover:not(.active) { color: var(--fg); background: var(--tab-hover-bg); }
   .tab.active { background: var(--panel); color: var(--fg); border-bottom-color: var(--panel); }
   .tab #chanBadge {
     display: inline-block; margin-left: 6px; min-width: 16px; padding: 0 4px;
-    border-radius: 8px; background: var(--ai); color: #fff; font-size: 11px;
+    border-radius: 8px; background: var(--ai); color: var(--btn-fg); font-size: 11px;
     line-height: 16px; text-align: center;
   }
   .tab #chanBadge[hidden] { display: none; }
@@ -216,7 +274,7 @@
     margin-top: 5px; padding-left: 8px; border-left: 2px solid var(--line);
     font-size: 12px; color: var(--muted);
   }
-  .msg .ev code { color: #9cdcfe; word-break: break-all; }
+  .msg .ev code { color: var(--tx-fg); word-break: break-all; }
   .msg .ev pre { margin: 3px 0 0; white-space: pre-wrap; word-break: break-all;
                  max-height: 130px; overflow: auto; font-size: 11px; }
   .msg .nv { margin-top: 5px; font-size: 12px; color: var(--paused); }
@@ -238,13 +296,13 @@
   #chanEvidenceBox { border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
   #chanEvidenceBox summary { cursor: pointer; color: var(--muted); font-size: 12px; }
   #chanEvidenceBox input, #chanEvidenceBox textarea {
-    width: 100%; margin-top: 6px; background: #1d1d1d; color: var(--fg);
+    width: 100%; margin-top: 6px; background: var(--input-bg); color: var(--fg);
     border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font: inherit;
   }
   #chanEvidenceBox textarea { min-height: 60px; resize: vertical; }
   #chanError {
-    color: #ff8a8a; font-size: 12px; line-height: 1.6;
-    border-left: 2px solid #8b2a2a; padding-left: 8px; white-space: pre-wrap;
+    color: var(--err-fg); font-size: 12px; line-height: 1.6;
+    border-left: 2px solid var(--err-line); padding-left: 8px; white-space: pre-wrap;
   }
   .composer { display: flex; gap: 8px; align-items: flex-end; }
   /* 输入框换成 textarea：命令偶尔很长（hex 串、批量命令），单行看不全。
@@ -268,7 +326,7 @@
   button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
   button:disabled { opacity: .4; cursor: not-allowed; }
   button.ghost { background: transparent; border: 1px solid var(--line); color: var(--fg); }
-  button.ghost:hover:not(:disabled) { background: rgba(127,127,127,.18); }
+  button.ghost:hover:not(:disabled) { background: var(--hover-bg); }
   button.danger { background: var(--danger); }
   button.danger:hover { filter: brightness(1.15); }
 
@@ -283,9 +341,9 @@
     /* 换挡感：底色和字色渐变过去（0.35s），和下面那次"弹一下"配起来才像真的换了状态 */
     transition: background-color .35s ease, color .35s ease;
   }
-  #controlstate[data-state=human]  { background: rgba(63,185,80,.15); color: var(--human); }
-  #controlstate[data-state=ai]     { background: rgba(47,129,247,.15); color: var(--ai); }
-  #controlstate[data-state=paused] { background: rgba(210,153,34,.15); color: var(--paused); }
+  #controlstate[data-state=human]  { background: var(--pill-human-bg); color: var(--human); }
+  #controlstate[data-state=ai]     { background: var(--pill-ai-bg); color: var(--ai); }
+  #controlstate[data-state=paused] { background: var(--pill-paused-bg); color: var(--paused); }
   #controlstate[data-state=ai]::after {
     content: ""; width: 7px; height: 7px; border-radius: 50%;
     background: var(--ai); animation: pulse 1.4s infinite;
@@ -350,15 +408,15 @@
   }
   .switch input { display: none; }
   .switch .knob {
-    width: 34px; height: 18px; border-radius: 9px; background: #444;
+    width: 34px; height: 18px; border-radius: 9px; background: var(--switch-off-bg);
     position: relative; transition: background .15s;
   }
   .switch .knob::after {
     content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
-    border-radius: 50%; background: #ccc; transition: transform .15s;
+    border-radius: 50%; background: var(--switch-knob); transition: transform .15s;
   }
   .switch input:checked + .knob { background: var(--accent); }
-  .switch input:checked + .knob::after { transform: translateX(16px); background: #fff; }
+  .switch input:checked + .knob::after { transform: translateX(16px); background: var(--btn-fg); }
   .hint { color: var(--muted); font-size: 11px; line-height: 1.4; }
 
   /* ── 角标 + 悬停气泡（1.23）─────────────────────────────
@@ -373,7 +431,9 @@
     position: relative; user-select: none; vertical-align: middle;
   }
   .tip::before {
-    content: "i"; font: italic 700 11px/1 Georgia, "Times New Roman", serif;
+    content: "i";
+    font-family: var(--font-mono); font-weight: 700;
+    font-size: 11px; line-height: 1; font-style: normal;
     /* 伪元素默认会挡住宿主自己的点击/悬停命中 → 显式让开 */
     pointer-events: none;
   }
@@ -391,7 +451,7 @@
     border: 1px solid var(--line); border-radius: 6px;
     padding: 6px 9px; font-size: 11.5px; line-height: 1.5; font-weight: 400;
     white-space: normal; text-align: left; width: max-content; max-width: min(260px, 72vw);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+    box-shadow: var(--shadow-pop);
     opacity: 0; pointer-events: none; z-index: 60;
     transition: opacity .12s ease, transform .12s ease;
   }
@@ -468,7 +528,7 @@
   }
   /* 弹窗 */
   .modal {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    display: none; position: fixed; inset: 0; background: var(--overlay-bg);
     align-items: center; justify-content: center; z-index: 100;
   }
   .modal.show { display: flex; }

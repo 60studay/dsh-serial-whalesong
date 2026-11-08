@@ -459,14 +459,17 @@ _ASSET_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
     ".png": "image/png",
+    # 1.24：命令区用的等宽字体（JetBrains Mono 子集，OFL）。字体文件也必须能被发出去，
+    # 否则 @font-face 静默回落到系统字体，看起来"改了但没变"。
+    ".woff2": "font/woff2",
 }
 
 
 def _load_asset(name):
-    """读 web/ 下的静态文件（app.css / app.js / js/*.js / brand.png）。
+    """读 web/ 下的静态文件（app.css / app.js / js/*.js / fonts/*.woff2 / brand.png）。
 
     返回 (bytes, content_type)；不存在返回 None。
-    白名单式：只认 .css/.js/.png，**只允许 js/ 这一层子目录**，不许 `..`。
+    白名单式：只认 .css/.js/.png/.woff2，**只允许 js/ 与 fonts/ 这两层子目录**，不许 `..`。
     这是"网页能读服务器文件"的唯一入口，边界必须是死的。
     """
     base = str(name or "").lstrip("/")
@@ -475,7 +478,7 @@ def _load_asset(name):
     parts = [p for p in base.split("/") if p]
     if not parts or len(parts) > 2:
         return None
-    if len(parts) == 2 and parts[0] != "js":
+    if len(parts) == 2 and parts[0] not in ("js", "fonts"):
         return None
     suffix = os.path.splitext(parts[-1])[1].lower()
     content_type = _ASSET_TYPES.get(suffix)

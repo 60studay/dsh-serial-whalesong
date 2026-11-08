@@ -261,6 +261,21 @@ def run_checks(base, original):
     check("1.23 气泡绝对定位且不吃点击",
           "position: absolute" in tip_block and "pointer-events: none" in tip_block,
           tip_block[:60])
+
+    # 1.24 字体：**字体文件必须真能发出去**。发不出去的话 @font-face 会静默回落，
+    # 看起来"改了但没变"——这种失败最难查，所以要钉死。
+    font_status, font_bytes = http_get(base, "/fonts/JetBrainsMono-Regular.woff2", timeout=10)
+    check("1.24 等宽字体文件能取到", font_status == 200 and len(font_bytes) > 1000,
+          "status=%s len=%s" % (font_status, len(font_bytes)))
+    check("1.24 字体走了变量（--font-ui / --font-mono）",
+          "--font-ui:" in css_text and "--font-mono:" in css_text, "")
+    # 字体族名只许出现在 @font-face 的定义行，其余必须是 var(...)
+    bare_family = [ln.strip() for ln in css_text.splitlines()
+                   if "font-family" in ln and "var(" not in ln
+                   and '"JetBrains Mono"' not in ln]
+    check("1.24 没有写死的字体族", not bare_family, str(bare_family[:3]))
+    check("1.24 为皮肤留的变量已定义（不实现）",
+          all(v in css_text for v in ("--bg-image:", "--bg-alpha:", "--logo:")), "")
     check("GET /js/channel.js 有导出", "export function pollChannel" in chan_text,
           chan_text[:60])
     check("页面用 type=module 加载",
