@@ -76,6 +76,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 return self._send(200, body, content_type)
             if path == "/status":
                 return self._json(self.ctx["status"]())
+            # 看客心跳：网页每 5 秒 ping 一次，关窗口时补一个 /bye。
+            # /viewer 只读，**不刷新时间戳**（否则 open_web 一问就变成"有人看着"）。
+            if path == "/ping":
+                return self._json(self.ctx["ping"]())
+            if path == "/bye":
+                return self._json(self.ctx["bye"]())
+            if path == "/viewer":
+                return self._json(self.ctx["viewer"]())
             if path == "/poll":
                 force = (query.get("force") or ["0"])[0] in ("1", "true", "yes")
                 return self._json(self.ctx["poll"](force))
@@ -126,6 +134,11 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 return self._json(self.ctx["control"](action, str(body.get("actor") or "human")))
             if path == "/watch":
                 return self._json(self.ctx["set_watch"](body))
+            if path == "/ping":
+                return self._json(self.ctx["ping"]())
+            if path == "/bye":
+                # sendBeacon 只会发 POST，所以两个方法都要认
+                return self._json(self.ctx["bye"]())
             if path == "/rules":
                 return self._json(self.ctx["set_rules"](body))
             if path == "/channel":

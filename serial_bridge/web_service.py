@@ -130,25 +130,55 @@ def _open_browser(url):
         return False
 
 
+def _viewer_idle(url, timeout=1.0):
+    """浏览器窗口还在吗？（网页每 3 秒 ping 一次，断了就是窗口被关了）
+
+    问不到就当"有人看着"——宁可不弹，也不制造噪音。
+    """
+    try:
+        with urllib.request.urlopen(str(url).rstrip("/") + "/viewer",
+                                    timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception:
+        return False
+    return not bool((data or {}).get("viewing", True))
+
+
+def _mark_viewer_seen(url, timeout=1.0):
+    """刚弹过一次窗口，先记成"有人在看"，否则紧接着的下一次调用会再弹一遍。"""
+    try:
+        req = urllib.request.Request(str(url).rstrip("/") + "/ping", data=b"{}",
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=timeout).read()
+    except Exception:
+        pass
+
+
 def open_web(paths, scene, port=0, mode="light", open_browser=False,
-             force_window=False, wait_s=12.0):
+             force_window=False, reopen_if_idle=False, wait_s=12.0):
     """起一个后台网页实例并返回它的 URL。已经在跑就直接返回现有的。
 
-    两个参数必须分清（通讯板 12:48 / 12:49 定的语义）：
+    三个参数必须分清（通讯板 12:48 / 12:49，加上用户后来加的一条）：
 
     - `open_browser`：这次"从没有到有"起页面时，要不要顺手把窗口打开。
-    - `force_window`：**页面已经在跑**时也要弹一次。只有"用户亲口说要"才允许传 True；
-      自动路径（开关=开，由 send/read/control 触发）绝不能传——否则每条命令弹一个窗口，
-      正是用户骂过的"点一次弹一次"。
+    - `force_window`：**页面已经在跑**时也要弹一次。只有"用户亲口说要"才允许传 True。
+    - `reopen_if_idle`：自动路径用。页面还在跑、但**浏览器窗口已经被关了**
+      （看客心跳断了 ≥15 秒）→ 再弹一次。用户关窗口通常只是"先不看了"，
+      下次用串口就该把页面给他送回来。
     """
     open_browser = bool(open_browser)
     force_window = bool(force_window)
+    reopen_if_idle = bool(reopen_if_idle)
 
     existing = read_instance(paths, scene)
     if existing:
-        # 已经在跑：**只有 force_window 才弹**。复用路径无条件弹是第二处老缺陷。
-        if force_window and existing.get("url"):
-            _open_browser(existing["url"])
+        url = existing.get("url")
+        should_pop = force_window
+        if not should_pop and reopen_if_idle and url:
+            should_pop = _viewer_idle(url)
+        if should_pop and url:
+            _open_browser(url)
+            _mark_viewer_seen(url)
         return {
             "running": True,
             "already_running": True,

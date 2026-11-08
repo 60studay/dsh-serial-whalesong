@@ -29,7 +29,10 @@ export function maybeAutoOpen({ argv, python, env, entry, runtimeRoot }) {
     const child = spawn(
       python.file,
       [...(python.args ?? []), entry, 'webctl',
-        '--action', 'open', '--scene', scene, '--open-browser'],
+        '--action', 'open', '--scene', scene,
+        // --reopen-if-idle：页面在跑但窗口被关了（看客心跳断）→ 把页面送回来。
+        // 窗口还开着时它是空操作，所以不会"每条命令弹一个窗口"。
+        '--open-browser', '--reopen-if-idle'],
       {
         cwd: path.dirname(entry),
         env,

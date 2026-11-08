@@ -296,6 +296,18 @@ import { pollChannel } from './js/channel.js';
     pollTimer = setInterval(tick, 700);
   }
 
+  /* ── 看客心跳 ───────────────────────────────────────────────
+     页面活着就每 5 秒 ping 一次；关窗口时补一个 /bye（beacon，立即生效）。
+     后端靠它判断"浏览器窗口还在不在"：窗口还在就不重复弹，
+     窗口被关了，下次用串口就自动把页面送回来（用户要的就是这个）。 */
+  function startViewerHeartbeat() {
+    api('/ping');
+    setInterval(function () { api('/ping'); }, 5000);
+    window.addEventListener('pagehide', function () {
+      try { navigator.sendBeacon('/bye'); } catch (e) { /* 老浏览器没有就算了 */ }
+    });
+  }
+
   /* ── 事件 ─────────────────────────────────────────────── */
   function send() {
     var raw = $('cmd').value;
@@ -563,6 +575,7 @@ import { pollChannel } from './js/channel.js';
     loadRules();
     tick();
     startPolling();
+    startViewerHeartbeat();
     pollChannel();
     setInterval(pollChannel, 2000);
   }).catch(function () {
@@ -570,6 +583,7 @@ import { pollChannel } from './js/channel.js';
     loadRules();
     tick();
     startPolling();
+    startViewerHeartbeat();
     pollChannel();
     setInterval(pollChannel, 2000);
   });

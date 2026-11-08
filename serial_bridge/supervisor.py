@@ -263,6 +263,31 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
                 pass
 
 
+    # ── 看客心跳：判断"浏览器窗口还在不在" ──────────────────────────────────
+    # 网页每 5 秒 ping 一次；**关窗口时还会补一个 /bye**（beacon，立即生效）。
+    # "开关=开 时自动开页面"靠它决定要不要**再弹一次**：
+    #   窗口还在 → 不打扰（人正看着，再弹就是噪音）
+    #   窗口没了 → 下次用串口就重弹（用户关窗口通常只是"先不看了"）
+    # 60 秒是心跳兜底阈值：浏览器把后台标签页的定时器节流到 1 次/分钟时，
+    # 不能因此误判成"窗口关了"（/bye 才是主力判据）。
+    VIEWER_IDLE_S = 60.0
+
+    def viewer_ping(self):
+        """网页活着就发这个。唯一作用是刷新"刚刚有人看着"。"""
+        self._viewer_seen = time.time()
+        return {"ok": True, "viewing": True}
+
+    def viewer_bye(self):
+        """窗口被关了：立刻记成"没人看"，让下一次用串口就能把页面送回来。"""
+        self._viewer_seen = 0.0
+        return {"ok": True, "closed": True}
+
+    def viewer_state(self):
+        """给 open_web 判断用。**不刷新时间戳**，否则一问就变成"有人看着"，永远不弹。"""
+        idle = time.time() - (getattr(self, "_viewer_seen", 0.0) or 0.0)
+        return {"ok": True, "idle_s": round(idle, 3),
+                "viewing": idle < self.VIEWER_IDLE_S}
+
     # ── 服务生命周期 ────────────────────────────────────────────────────────
     def serve(self, open_browser=False):
         # 单实例守卫：同一场景只允许一个网页实例，否则两个进程会互相抢串口。
@@ -298,10 +323,15 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         handler = type("BoundHandler", (BridgeHandler,), {})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
         self.httpd.daemon_threads = True
+        # 刚起来就算"有人在看"：否则第二次 send 会在页面还没 ping 之前又弹一遍
+        self._viewer_seen = time.time()
         self.httpd.context = {
             "page": self._page,
             "asset": _load_asset,
             "status": self.status,
+            "ping": self.viewer_ping,
+            "bye": self.viewer_bye,
+            "viewer": self.viewer_state,
             "poll": self.poll,
             "alerts": self.alerts,
             "send": self.send,

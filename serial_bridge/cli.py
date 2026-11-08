@@ -490,9 +490,10 @@ def cmd_webctl(paths, args):
     scene = (args.scene or "").strip() or _default_scene(paths)
     action = args.action
     if action == "open":
-        # 不传 flag = 不弹（"用户没说就别打扰"）。弹窗只有两个来源：
+        # 不传 flag = 不弹（"用户没说就别打扰"）。弹窗只有三个来源：
         #   ① 用户/AI 显式要（--open-browser；页面已在跑再加 --force-browser）；
-        #   ② 开关=开 时由 send/read/control 触发的自动路径（--open-browser，不带 force）。
+        #   ② 开关=开 时由 send/read/control 触发的自动路径（--open-browser --reopen-if-idle）；
+        #   ③ ②的补充：页面在跑但窗口被关了，--reopen-if-idle 会再弹一次。
         # 以前这里写死 True，把"用户没说"翻译成"要弹"，复用路径还无条件重弹，
         # 于是每看一眼网页就弹一个窗口。
         return _ok(web_service.open_web(
@@ -500,7 +501,8 @@ def cmd_webctl(paths, args):
             port=int(args.port or 0),
             mode=args.mode,
             open_browser=bool(getattr(args, "open_browser", False)),
-            force_window=bool(getattr(args, "force_window", False))))
+            force_window=bool(getattr(args, "force_window", False)),
+            reopen_if_idle=bool(getattr(args, "reopen_if_idle", False))))
     if action == "close":
         return _ok(web_service.close_web(paths, scene))
     return _ok(web_service.status_web(paths, scene))
@@ -690,6 +692,8 @@ def build_parser():
                         help="明确不打开浏览器（默认就是这条）")
     webctl.add_argument("--force-browser", dest="force_window", action="store_true",
                         help="页面已经在跑也弹一次——只有用户亲口说要才传")
+    webctl.add_argument("--reopen-if-idle", dest="reopen_if_idle", action="store_true",
+                        help="页面在跑但浏览器窗口已关（看客心跳断了）→ 再弹一次；给自动路径用")
 
     # UI 偏好：设置页读写。不带 --set 就是读。
     prefs = sub.add_parser("prefs")

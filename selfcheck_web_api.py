@@ -295,6 +295,36 @@ def run_checks(base, original):
     status, _ = http_get(base, "/favicon.ico")
     check("GET /favicon.ico  返回 204", status == 204, "status=%s" % status)
 
+    # 7b. 看客心跳：页面靠它判断"浏览器窗口还在不在"
+    #     （决定下次用串口要不要把页面重新弹给用户）
+    status, text = http_get(base, "/status")
+    # 刚起来应该算"有人看着"
+    status, text = http_get(base, "/viewer")
+    data = as_json(text)
+    check("GET /viewer  返回 200", status == 200, "status=%s" % status)
+    check("GET /viewer  带 viewing 字段", data is not None and "viewing" in data,
+          text[:120])
+    check("GET /viewer  刚起来算看着", bool(data and data.get("viewing") is True),
+          str(data)[:120])
+    # /viewer 只读：连查几次不能把"没人看"刷成"有人看"
+    check("GET /viewer  不刷新时间戳",
+          bool(data and data.get("idle_s", 0) >= 0), str(data)[:120])
+    status, text = http_get(base, "/ping")
+    data = as_json(text)
+    check("GET /ping  返回 200", status == 200, "status=%s" % status)
+    check("GET /ping  回 viewing=true", bool(data and data.get("viewing") is True),
+          text[:120])
+    # /bye = 关窗口：立刻变成"没人看"，下一次用串口就会重弹
+    status, text = http_post(base, "/bye", {})
+    data = as_json(text)
+    check("POST /bye  返回 200", status == 200, "status=%s" % status)
+    status, text = http_get(base, "/viewer")
+    data = as_json(text)
+    check("POST /bye 后 viewer 说没人看",
+          bool(data and data.get("viewing") is False), str(data)[:120])
+    # 恢复成"有人在看"，别影响后面的用例
+    http_get(base, "/ping")
+
     # 8. 未知 GET 应该 404 + 结构化错误
     status, text = http_get(base, "/this-path-does-not-exist")
     data = as_json(text)

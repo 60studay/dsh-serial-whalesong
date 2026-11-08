@@ -98,19 +98,36 @@ def main():
         os.remove(uiprefs.prefs_path(paths))
         check("文件不存在 → 默认关", uiprefs.read_prefs(paths) == {"auto_open_browser": False})
 
-        print("\n[7] 复用路径：页面已经在跑时，只有 force_window 才弹（桩测试）")
+        print("\n[7] 复用路径：页面在跑时弹不弹，看窗口还在不在（桩测试）")
         from serial_bridge import web_service
         calls = []
+        marked = []
+        idle = {"value": False}
         orig_read, orig_open = web_service.read_instance, web_service._open_browser
+        orig_idle = web_service._viewer_idle
+        orig_mark = web_service._mark_viewer_seen
         web_service.read_instance = lambda p, s: {
             "url": "http://127.0.0.1:8899/", "port": 8899, "pid": 1,
             "status": {"mode": "light"},
         }
         web_service._open_browser = lambda url: calls.append(url)
+        web_service._viewer_idle = lambda url, timeout=1.0: idle["value"]
+        web_service._mark_viewer_seen = lambda url, timeout=1.0: marked.append(url)
         try:
-            # 自动路径（开关=开 由 send 触发）走的就是这个组合：不许弹
+            # 自动路径（开关=开 由 send 触发），窗口还开着：不许弹
+            web_service.open_web(paths, "s", open_browser=True, force_window=False,
+                                 reopen_if_idle=True)
+            check("窗口还开着 → 不弹", calls == [], calls)
+            # 用户把窗口关了：下次用串口要把页面送回来
+            idle["value"] = True
+            web_service.open_web(paths, "s", open_browser=True, force_window=False,
+                                 reopen_if_idle=True)
+            check("窗口关了 → 弹一次", len(calls) == 1, calls)
+            check("弹完先记一笔（防连弹）", len(marked) == 1, marked)
+            # 不带 reopen_if_idle 的老路径：即使窗口关了也不弹
+            calls.clear()
             web_service.open_web(paths, "s", open_browser=True, force_window=False)
-            check("自动路径（不带 force）不弹", calls == [], calls)
+            check("不传 reopen_if_idle → 不弹", calls == [], calls)
             # 用户亲口说要：页面在跑也弹一次
             web_service.open_web(paths, "s", open_browser=True, force_window=True)
             check("显式 force 弹一次", len(calls) == 1, calls)
@@ -120,6 +137,8 @@ def main():
         finally:
             web_service.read_instance = orig_read
             web_service._open_browser = orig_open
+            web_service._viewer_idle = orig_idle
+            web_service._mark_viewer_seen = orig_mark
 
         print("\n[8] 命令行参数：「不传」= 不弹，不能默认成 True")
         parser = build_parser()
@@ -132,6 +151,8 @@ def main():
         check("--no-browser → False", denied.open_browser is False, denied.open_browser)
         forc = parser.parse_args(["webctl", "--action", "open", "--force-browser"])
         check("--force-browser → True", forc.force_window is True, forc.force_window)
+        reo = parser.parse_args(["webctl", "--action", "open", "--reopen-if-idle"])
+        check("--reopen-if-idle → True", reo.reopen_if_idle is True, reo.reopen_if_idle)
         webplain = parser.parse_args(["web", "--scene", "x"])
         check("web 不传 flag → None", webplain.open_browser is None, webplain.open_browser)
 
@@ -150,6 +171,8 @@ def main():
         check("输出丢掉（不读、不解析）", "stdio: 'ignore'" in auto_code)
         check("绝不带 --force-browser（第二次不重弹）",
               "--force-browser" not in auto_code, "自动路径不许无条件弹")
+        check("带 --reopen-if-idle（窗口关了要送回来）",
+              "--reopen-if-idle" in auto_code, "缺 reopen 语义")
         check("取不到 scene 就不触发", "pickScene" in auto_code)
         check("读的是 ui-prefs.json", "ui-prefs.json" in auto_code)
         check("runCli 里挂了钩子",
