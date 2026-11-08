@@ -27,6 +27,9 @@ class WatchLoop(object):
         self.paths = paths
         self.state = state
         self.logger = logger
+        # 配置从哪来。默认场景配置；supervisor 会换成 effective_cfg（含页面 override），
+        # 否则"页面选的串口"到不了定时/规则这两条路径（对面 1.12）。
+        self.cfg_provider = lambda: self.scene.cfg
         self.ser = None
         self.thread = None
         self.send_thread = None
@@ -49,7 +52,7 @@ class WatchLoop(object):
         self.stop()
         self.device = device
         self.baud = baud
-        self.ser = serial_io.open_port(self.scene.cfg, device, baud)
+        self.ser = serial_io.open_port(self.cfg_provider(), device, baud)
         self.stop_event.clear()
         self.running = True
         self.thread = threading.Thread(target=self._read_loop, name="watch-read", daemon=True)
@@ -93,11 +96,17 @@ class WatchLoop(object):
         以前两者共用默认值 "auto"，页面上全显示成「定时」，
         等于把"系统自主行为"藏进了"我自己设的"里（用户实测报的 bug）。
 
+        **cfg 从 `self.cfg_provider()` 取，不是 `self.scene.cfg`**：
+        用户在页面上选的串口/波特率是"运行期覆盖"（override_com / override_baud），
+        只存在 supervisor 的 effective_cfg() 里。以前这里直接读场景配置，
+        于是「页面选了 COM7，定时却把命令发给了 config 里写的 COM10」——
+        真机上表现为"定时发出去一点回显都没有"（对面 1.12 的决定性实验）。
+
         raw_bytes 不为 None 时按原始字节发送（hex 场景的命令），两条路径都要尊重它。
 
         每次发送都会往 auto_frames 里记一帧，网页据此显示命令 + 回显。
         """
-        cfg = self.scene.cfg
+        cfg = self.cfg_provider()
         newline = serial_io.decode_newline(cfg.get("newline"), "\\r\\n")
         if self.running and self.ser is not None:
             # 原始字节模式不补换行，帧由调用方给全（见 io.transact 的说明）

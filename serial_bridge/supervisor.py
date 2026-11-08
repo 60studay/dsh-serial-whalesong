@@ -58,6 +58,9 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         self.port = int(port or self.scene.cfg.get("web_port") or DEFAULT_PORT)
         self.httpd = None
         self.loop = WatchLoop(self.scene, paths, self.state, self.logger)
+        # 定时发送、规则自动处置都走 loop.send_raw()，它必须看到"页面上选的串口"
+        # （override_com / override_baud），否则会把命令发到 config 里写的口（1.12）。
+        self.loop.cfg_provider = self.effective_cfg
         self.shutdown_event = threading.Event()
         self.override_com = ""
         self.override_baud = 0
