@@ -59,6 +59,10 @@ def _now():
 # 超过这个秒数没心跳，说明没人正在盯这一局人机协同，门禁按"无人看管"处理。
 PRESENCE_TTL_S = 30
 
+# 告警账本保留条数（1.20-b）：网页只看最近 N 条，更早的没有意义，
+# 但文件如果不裁就会一直变厚。500 条约等于最近几小时的异常。
+ALERT_KEEP = 500
+
 
 class SharedState(object):
     """一个场景一份状态文件：runtime/state/<场景名>.json。
@@ -287,7 +291,44 @@ class SharedState(object):
         record.setdefault("time", time.strftime("%Y-%m-%d %H:%M:%S"))
         with open(self.alerts_path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        self.trim_alerts()
         return record
+
+    def trim_alerts(self):
+        """告警账本只留最近 ALERT_KEEP 条（1.20-b），返回 True 表示真的裁了。
+
+        这是网页"告警"列表的数据源。以前**只追加、从不裁剪**，
+        和通讯板、日志一样属于"只进不出"的累加。
+        做法照抄 `channel.py`（那里早就有 2000 条上限）：
+        超了就重写成最近 N 条，**条目内容与时间戳一个字不改**，
+        所以 `/alerts` 看到的还是原来那几条，只是更早的没了。
+        """
+        try:
+            with open(self.alerts_path, encoding="utf-8") as handle:
+                lines = handle.readlines()
+        except OSError:
+            return False
+        if len(lines) <= ALERT_KEEP:
+            return False
+        tmp = self.alerts_path + ".tmp%d" % os.getpid()
+        try:
+            with open(tmp, "w", encoding="utf-8") as handle:
+                handle.writelines(lines[-ALERT_KEEP:])
+            # Windows 上 os.replace 可能因为别的进程正在读而失败，重试几次；
+            # 真失败就放弃裁剪（下次追加还会再试），不能把告警本身搞丢。
+            for attempt in range(10):
+                try:
+                    os.replace(tmp, self.alerts_path)
+                    return True
+                except OSError:
+                    time.sleep(0.01 * (attempt + 1))
+        except OSError:
+            pass
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
 
     def clear_alerts(self):
         """清空告警记录，返回清掉了多少条。
