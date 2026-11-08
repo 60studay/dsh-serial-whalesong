@@ -86,7 +86,15 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 return self._json(self.ctx["viewer"]())
             if path == "/poll":
                 force = (query.get("force") or ["0"])[0] in ("1", "true", "yes")
-                return self._json(self.ctx["poll"](force))
+                # since 存在 = 按游标读、不消费（1.17）；不传 = 老行为（取走），兼容外部脚本
+                raw_since = (query.get("since") or [None])[0]
+                since = None
+                if raw_since not in (None, ""):
+                    try:
+                        since = float(raw_since)
+                    except ValueError:
+                        since = None
+                return self._json(self.ctx["poll"](force, since))
             if path == "/alerts":
                 limit = int((query.get("limit") or ["20"])[0])
                 return self._json({"ok": True, "alerts": self.ctx["alerts"](limit)})

@@ -81,12 +81,17 @@ class StatusMixin(object):
         return data
 
 
-    def poll(self, force=False):
+    def poll(self, force=False, since=None):
         """把后端攒下的数据交给网页。
 
         自动发送（定时发送 / 规则自动处置）的每一帧都会进 `auto_frames`，
         这里**不分 mode** 都取走——否则 light 模式下定时发送在页面上看不到回显
         （Bug 4：用户说"没看到"，不是"没发送"）。
+
+        **1.17：带 `since` 时改为按游标读、不消费**（环形缓冲 200 条）。
+        以前 `take_frames()` 是取走即清空，于是"页面在轮询"和"我在测试脚本里轮询"
+        会互相抢帧——用户看不到 AI 发的命令、我这边拿到 0 帧，都是这个。
+        不带 `since` 时仍走老行为（取走），保证外部脚本不受影响。
 
         管家在跑时改从管家取（游标式增量），网页就完全不用碰串口了。
         """
@@ -111,6 +116,20 @@ class StatusMixin(object):
                 return {"ok": True, "frames": [], "rx_text": "", "rx_hex": "",
                         "bytes": 0, "via": "daemon"}
             self._daemon_cache = (0, None)      # 管家掉线：回退到本地逻辑
+
+        if since is not None:
+            # 游标模式：不消费，谁轮询都不影响别人
+            frames = self.loop.read_frames(since)
+            data = self.loop.take()
+            cursor = max([float(f.get("ts") or 0) for f in frames] or [float(since or 0)])
+            return {
+                "ok": True,
+                "frames": frames,
+                "cursor": cursor,
+                "rx_text": data.decode("utf-8", errors="replace"),
+                "rx_hex": " ".join("%02X" % b for b in data),
+                "bytes": len(data),
+            }
 
         frames = self.loop.take_frames()
         data = self.loop.take()

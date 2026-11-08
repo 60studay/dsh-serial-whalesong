@@ -293,12 +293,17 @@ import { pollChannel } from './js/channel.js';
     });
   }
 
+  // 帧游标（1.17）：页面按 since 读，**不消费**帧，别的看客（测试脚本/另一个标签）
+  // 也能各自看到同样的事件。以前 /poll 取走即清空，谁先轮询谁拿到。
+  var frameCursor = 0;
+
   function tick() {
     api('/status').then(function (data) {
       if (data.ok) renderStatus(data);
     });
-    api('/poll').then(function (data) {
+    api('/poll?since=' + frameCursor).then(function (data) {
       if (!data.ok) return;
+      if (typeof data.cursor === 'number') frameCursor = data.cursor;
       // 自动发送 / AI 发起的每一帧：先打来源+命令，再打回显（来源映射见 WHO）
       (data.frames || []).forEach(function (f) {
         appendTx(f.source || 'auto', f.tx);

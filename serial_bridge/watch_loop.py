@@ -167,6 +167,20 @@ class WatchLoop(object):
                 del self.auto_frames[:-200]
         return frame
 
+    def read_frames(self, since=0.0):
+        """按游标取帧，**不消费**（1.17）。
+
+        游标就是上一帧的 `ts`。多个看客（页面标签、测试脚本）各自持游标，
+        互不抢帧；服务端只保留最近 200 条（`_push_frame` 里裁）。
+        """
+        try:
+            since = float(since or 0)
+        except (TypeError, ValueError):
+            since = 0.0
+        with self.lock:
+            return [dict(f) for f in self.auto_frames
+                    if float(f.get("ts") or 0) > since]
+
     def take_frames(self):
         """取走待显示的自动发送帧。"""
         with self.lock:
