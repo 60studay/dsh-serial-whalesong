@@ -7,10 +7,24 @@
   "author": "刘实 (github.com/60studay)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/60studay/dsh-whalesong.git"
+    "url": "https://github.com/60studay/dsh-serial-whalesong.git"
   },
-  "homepage": "https://github.com/60studay/dsh-whalesong#readme",
-  "description": "通用串口工具：自动匹配端口、三类结构化错误、双开关监视与异常自动处置、控制权状态机",
+  "homepage": "https://github.com/60studay/dsh-serial-whalesong#readme",
+  "description": "DeepSeek Harness 的串口插件：9 个工具 + 网页版，AI 与人共用一根串口线（自动匹配端口、结构化回显、定时发送、异常自动处置）",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "serial",
+    "serial-port",
+    "com-port",
+    "uart",
+    "rs232",
+    "usb-serial",
+    "ch340",
+    "modbus",
+    "ai-agent"
+  ],
   "main": "index.js",
   "exports": {
     ".": "./index.js",

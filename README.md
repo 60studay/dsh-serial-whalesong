@@ -1,5 +1,9 @@
 # 鲸歌 · dsh-whalesong（测试版）
 
+> **English**: a serial-port plugin for **DeepSeek Harness (DSH)** — 9 tools + a web UI,
+> so an AI agent and a human can share one UART line.
+> Keywords: `serial` · `serial port` · `COM port` · `UART` · `RS232` · `USB-serial` · `CH340` · `Modbus` · `AI agent`
+
 ## 一句话
 
 **让 AI 真的能动手 —— 不是点一下网页上的按钮，是把指令发进一根真实的线里。**
