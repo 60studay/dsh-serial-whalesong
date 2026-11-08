@@ -417,16 +417,17 @@ import { initTips } from './js/tips.js';
       appendTx(f.source || 'auto', f.tx);
       if (dispMode === 'hex') {
         if (f.hex) append(f.hex + '\n');
-        else if (f.rx_pending) appendNote('（回显交给读线程，稍后补上）');
       } else if (f.rx) {
         append(f.rx);
-      } else if (f.rx_pending) {
-        // 1.14：监视模式下回显走读线程，这一帧本来就没有回显，不是"设备没回"
-        appendNote('（回显交给读线程，稍后补上）');
-      } else {
-        // 轻模式同步收发：这一帧空了就是设备真的没回话
+      } else if (!f.rx_pending) {
+        // 轻模式**同步**收发（手动发送走这条）：这一帧空了就是设备真没回话
         appendNote('（设备没回话）');
       }
+      // rx_pending（回显走读线程）这里**什么都不写**。
+      // 以前写"回显交给读线程，稍后补上"，但轻模式的回显是字节流，
+      // 不保证落回这一行 —— 对面 19:30 实测 28 条里绝大多数"补上"从没发生，
+      // 少数补上的还和提示粘成一句「（回显…）ERR CMD Z」。
+      // 承诺兑现不了就是假信息：宁可空着，等回显真的以「设备」行出现。
     });
     if (dispMode === 'hex') {
       if (data.rx_hex) append(data.rx_hex + '\n');
