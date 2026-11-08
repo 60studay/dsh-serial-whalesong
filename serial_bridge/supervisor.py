@@ -162,10 +162,20 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
 
         Bug 4 的根因是它原来活在 WatchLoop 里，而 WatchLoop 只在
         「监视模式 + 控制权 ai」时启动 —— light 模式下打开开关既不发也不报错。
-        放在 WebServer 层后，两种模式都按 interval_ms 发；light 模式每次临时开口。
-        控制权为 paused 时跳过（paused 的语义是"谁都不发"）。
+        放在 WebServer 层后，两种模式都按 interval_ms 发。
+
+        排期规则（2026-11-08 按用户实测反馈改）：
+          · **按绝对时间表**推进：`next_at += interval`，不拿"发完的时刻"当基准；
+          · 落后超过一个间隔就**跳过**，不补发、不突发（用户要的是节奏稳定，
+            不是"欠多少补多少"）；
+          · 跳过的次数记进统计，页面上能看见——用户上次就是"凭感觉"觉得不对，
+            却没有任何数字可查。
+
+        还没做（下一步）：发送不等回包、light 模式发送期间保持端口不关。
+        那两条要动收发通道本身（回显还要喂给规则引擎），单独一轮做。
         """
         next_at = 0.0
+        gaps = []
         while not self.shutdown_event.is_set():
             try:
                 current = self.state.read()
@@ -176,13 +186,28 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
                 control = current.get("state") or "human"
                 if not enabled or not command or control == STATE_PAUSED:
                     next_at = 0.0
+                    gaps = []
                     self.shutdown_event.wait(0.2)
                     continue
+
                 now = time.time()
                 if now < next_at:
                     self.shutdown_event.wait(min(0.2, max(0.01, next_at - now)))
                     continue
-                next_at = now + interval
+
+                # 落后超过一个间隔 → 说明上一轮被收发耗时拖住了：跳过欠账，重新对表
+                late = now - next_at
+                if next_at > 0 and late > interval:
+                    missed = int(late // interval)
+                    if missed > 0:
+                        stats = self.autosend_stats
+                        stats["skipped"] = stats.get("skipped", 0) + missed
+                    next_at = now + interval
+                elif next_at > 0:
+                    next_at = next_at + interval      # 绝对时间表：不累积漂移
+                else:
+                    next_at = now + interval
+
                 # 场景可以声明 command_mode: "hex"，让定时发送的 command 按十六进制解析
                 cmd_mode = str(watch.get("command_mode")
                                or self.scene.cfg.get("command_mode") or "text").lower()
@@ -190,9 +215,16 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
                 if cmd_mode == "hex" and raw is None:
                     raise BridgeError("config", "定时发送命令不是合法十六进制：%r" % command)
                 text = self.loop.send_raw(command, raw_bytes=raw)
-                self.autosend_stats["sent"] = self.autosend_stats.get("sent", 0) + 1
-                self.autosend_stats["last_tx"] = time.time()
-                self.autosend_stats["last_error"] = ""
+                sent_at = time.time()
+                stats = self.autosend_stats
+                stats["sent"] = stats.get("sent", 0) + 1
+                if stats.get("last_tx"):
+                    gaps.append(sent_at - stats["last_tx"])
+                    gaps = gaps[-20:]                 # 只留最近 20 次，算滚动平均
+                stats["last_tx"] = sent_at
+                stats["last_error"] = ""
+                if gaps:
+                    stats["avg_gap_ms"] = int(round(1000.0 * sum(gaps) / len(gaps)))
                 # 定时轮询的回显按 check_source 决定要不要判定
                 self._maybe_check(text, "watch")
             except BridgeError as exc:

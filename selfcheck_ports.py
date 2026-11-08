@@ -104,6 +104,27 @@ def main():
         got = resolve_port({"com": "COM10"})
         check("source=com", got.get("source") == "com", got)
         check("没有多余的 note", got.get("note") == "", got.get("note"))
+
+        print("\n[7] 同型号两块 + 填了 com：必须能用 com 收窄（说明书指的路要走得通）")
+        # 以前 com 只在第 3 步查，而歧义在第 1/2 步就抛了：
+        # 错误提示让用户"填 com"，用户填了还是同样的错。
+        use(BT + [CH340_A, CH340_B])
+
+        try:
+            resolve_port({"match_vid_pid": "1A86:7523"})
+            check("两块 CH340 不填 com 应报歧义", False, "居然没报错")
+        except BridgeError as exc:
+            check("不填 com → ambiguous_device", exc.kind == "ambiguous_device", exc.kind)
+
+        got = resolve_port({"match_vid_pid": "1A86:7523", "com": "COM11"})
+        check("填了 com 就选中它", got.get("device") == "COM11", got)
+        check("source=com（不是 match_vid_pid）", got.get("source") == "com", got)
+
+        got = resolve_port({"match": "CH340", "com": "Com10"})   # 大小写也要认
+        check("描述匹配 + com 收窄（大小写不敏感）", got.get("device") == "COM10", got)
+
+        got = resolve_port({"match_serial": "SN-A", "com": "COM11"})
+        check("序列号已能唯一命中时不看 com", got.get("device") == "COM10", got)
     finally:
         ports_mod.scan_ports = original
 

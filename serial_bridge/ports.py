@@ -5,6 +5,11 @@
   match_vid_pid → match（描述模糊） → com（精确号）
 并且**永远先扫描**：配置里写了 com 也不能跳过扫描，因为 COM 号会变。
 
+**歧义时 com 是收窄依据**（以前不是，这是个真 bug）：
+以前 com 只在"第 3 步"生效，而同型号多块板子的歧义在第 1 步（VID:PID）就抛错了，
+于是错误提示让用户"把 com 写成具体的串口号"——用户照做了，**还是同样的错**。
+现在每个"多块命中"的分支都会先用 com 收窄一次，再决定报不报歧义。
+
 自动纠正：配置写 COM7，但按 match 找到 CH340 在 COM9 → 用 COM9 并注明。
 
 注意：本模块不认识任何具体设备。CH340 / CP210x 之类只出现在注释里当例子，
@@ -200,6 +205,10 @@ def resolve_port(cfg):
             narrowed = _match_by_serial(hits, wanted_serial)
             if len(narrowed) == 1:
                 return _resolved(narrowed[0], "match_serial", wanted_com)
+            # 序列号没有/没配对时，再按配置里的 com 收窄（不然"填 com"的建议是空的）
+            pinned = _narrow_by_com(hits, wanted_com)
+            if len(pinned) == 1:
+                return _resolved(pinned[0], "com", wanted_com)
             raise _ambiguous(wanted_vid_pid, "match_vid_pid", hits, ports)
         raise BridgeError(
             "no_device",
@@ -218,6 +227,9 @@ def resolve_port(cfg):
         if len(hits) == 1:
             return _resolved(hits[0], "match_serial", wanted_com)
         if len(hits) > 1:
+            pinned = _narrow_by_com(hits, wanted_com)
+            if len(pinned) == 1:
+                return _resolved(pinned[0], "com", wanted_com)
             raise _ambiguous(wanted_serial, "match_serial", hits, ports)
         raise BridgeError(
             "no_device",
@@ -233,6 +245,9 @@ def resolve_port(cfg):
         if len(hits) == 1:
             return _resolved(hits[0], "match", wanted_com)
         if len(hits) > 1:
+            pinned = _narrow_by_com(hits, wanted_com)
+            if len(pinned) == 1:
+                return _resolved(pinned[0], "com", wanted_com)
             raise _ambiguous(wanted_desc, "match", hits, ports)
         raise BridgeError(
             "no_device",
@@ -306,6 +321,18 @@ def _resolved(port, source, wanted_com):
         "source": source,
         "note": note,
     }
+
+
+def _narrow_by_com(hits, wanted_com):
+    """同型号命中多块时，用配置里写死的 `com` 再收窄一次。
+
+    为什么需要它：错误提示一直让用户"把 com 写成其中一个具体串口号"，
+    但 com 以前只在第 3 步查，而歧义在第 1/2 步就抛了 —— 用户照做仍然报同样的错。
+    """
+    if not wanted_com:
+        return []
+    wanted = wanted_com.strip().lower()
+    return [p for p in hits if str(p.get("device") or "").strip().lower() == wanted]
 
 
 def _ambiguous(value, field, hits, ports):

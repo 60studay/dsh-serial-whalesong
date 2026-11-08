@@ -53,6 +53,11 @@ class StatusMixin(object):
             "watch_running": self.loop.running or (autosend_alive and bool(watch_cfg.get("send_enabled"))),
             "port_held": self.loop.running,
             "sent_count": self.autosend_stats.get("sent", 0),
+            # 定时发送的"准不准"要能被用户自己看见，而不是靠感觉：
+            # skipped = 因为上一轮被收发拖住而跳过的次数（不补发），
+            # avg_gap_ms = 最近 20 次的实际平均间隔（滚动）。
+            "sent_skipped": self.autosend_stats.get("skipped", 0),
+            "avg_gap_ms": self.autosend_stats.get("avg_gap_ms", 0),
             "autosend_error": self.autosend_stats.get("last_error", ""),
             "watch_error": self.loop.last_error,
             "alerts": self.state.read_alerts(5),
