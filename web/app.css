@@ -145,6 +145,11 @@
      时间靠右对齐成一整列（像目录的页码）——放前面会切碎"谁发了什么"的阅读流。
      正文那一列吃满剩余宽度，所以回显天然和命令的左边界对齐。 */
   .ln { display: grid; grid-template-columns: var(--tagw) 1fr auto; column-gap: 10px; align-items: baseline; }
+  /* "打击感"之三：新行入场（18ms 都不到，只滑 4px）。
+     串口是数据流，行是"冒出来"的 —— 这一点位移让人感觉得到"来了"，
+     又不至于晃眼。只在**新建的行**上跑（老行不会重播）。 */
+  @keyframes sbIn { from { opacity: .35; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+  .ln { animation: sbIn .16s ease-out both; }
   .ln > .t {
     color: var(--muted); font-size: 11px; line-height: 1.6;
     white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -258,6 +263,9 @@
     padding: 9px 16px; font: inherit; cursor: pointer;
   }
   button:hover:not(:disabled) { background: var(--accent-hover); }
+  /* "打击感"之一：按下真的会陷下去一点（60ms，成本 2 行，不占空间） */
+  button { transition: transform .06s ease, background .15s ease; }
+  button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
   button:disabled { opacity: .4; cursor: not-allowed; }
   button.ghost { background: transparent; border: 1px solid var(--line); color: var(--fg); }
   button.ghost:hover:not(:disabled) { background: rgba(127,127,127,.18); }
@@ -281,6 +289,10 @@
     background: var(--ai); animation: pulse 1.4s infinite;
   }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  /* "打击感"之二：控制权**真的变了**才弹一下（0.4s，只动一次）。
+     常动的动画会变成噪音；只在对的时刻动一次，才有"被点到了"的感觉。 */
+  @keyframes sbPop { 0% { transform: scale(1); } 35% { transform: scale(1.08); } 100% { transform: scale(1); } }
+  #controlstate.pop { animation: sbPop .4s ease-out; }
   .sep { color: var(--line); }
 
   /* 侧栏 */
@@ -358,6 +370,9 @@
     pointer-events: none;
   }
   .tip:hover, .tip:focus-visible, .tip.open { color: var(--fg); border-color: currentColor; }
+  /* 没能挂到标签后面的角标（小组级说明）会单独占一行：
+     给一点点外边距，别贴着上一个控件。 */
+  .group > .tip, .field > .tip { margin: 2px 0 2px 1px; }
   .tip::after {
     content: attr(data-tip);
     /* 往右展开（不是居中）：控制权那条角标在全页最左边，

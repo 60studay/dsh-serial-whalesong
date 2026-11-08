@@ -45,7 +45,7 @@
     <div id="paneSerial" class="pane">
     <!-- 系统事件轨道：控制权/端口/告警等，与串口数据分区显示 -->
     <div id="timeline">
-      <div class="tl-head"><span>状态轨道</span><span class="tl-actions"><button class="ghost" id="btnReadOnce">读一次</button><button class="ghost" id="btnClear" title="清空回显、状态轨道和告警记录">🗑 清空</button></span></div>
+      <div class="tl-head"><span>状态轨道</span><span class="tl-actions"><button class="ghost" id="btnReadOnce">读一次</button><button class="ghost" id="btnClear" title="清空回显、状态轨道和告警记录">清空</button></span></div>
       <div id="timelineList"></div>
     </div>
     <div id="console" tabindex="0" placeholder="串口收发内容会显示在这里…"></div>
@@ -126,14 +126,14 @@
                 title="清掉手动选的口，回到 config.json 的匹配规则（不会改配置文件）">回到自动识别</button>
       </div>
       <!-- 1.15：一句话说清"没写死口号也能用"，不做新手引导 -->
-      <div class="hint">没写死口号也能用；选过的只存运行期状态（重启仍在），不改 config.json。</div>
+      <div class="hint" data-tipify>没写死口号也能用；选过的只存运行期状态（重启仍在），不改 config.json。</div>
       <div class="field">
         <span>显示模式</span>
         <div class="radio">
           <label><input type="radio" name="disp" value="text" checked> 文字</label>
           <label><input type="radio" name="disp" value="hex"> 十六进制</label>
         </div>
-        <div class="hint">十六进制模式下输入也按 hex 解析（如 AA 55 01）</div>
+        <div class="hint" data-tipify>十六进制模式下输入也按 hex 解析（如 AA 55 01）</div>
       </div>
       <div class="field">
         <span>连接模式</span>
@@ -141,7 +141,7 @@
           <label><input type="radio" name="wmode" value="light" checked> 轻模式</label>
           <label><input type="radio" name="wmode" value="watch"> 监视</label>
         </div>
-        <div class="hint">轻模式不占口，可与 AI、串口助手共存；监视模式占口但能看连续数据流。</div>
+        <div class="hint" data-tipify>轻模式不占口，可与 AI、串口助手共存；监视模式占口但能看连续数据流。</div>
       </div>
     </div>
 
@@ -149,7 +149,7 @@
 
     <div class="group">
       <span class="title">定时发送</span>
-      <div class="group-hint">按间隔自动发一条命令，与「异常判定」互不影响</div>
+      <div class="group-hint" data-tipify>按间隔自动发一条命令，与「异常判定」互不影响</div>
       <label class="switch">
         <span>定时发送</span>
         <input type="checkbox" id="sendEnabled"><span class="knob"></span>
@@ -170,7 +170,7 @@
 
     <div class="group">
       <span class="title">异常判定</span>
-      <div class="group-hint">收到数据时按规则检查，出错只记日志，不影响收发</div>
+      <div class="group-hint" data-tipify>收到数据时按规则检查，出错只记日志，不影响收发</div>
       <label class="switch">
         <span>异常判定</span>
         <input type="checkbox" id="checkEnabled"><span class="knob"></span>
@@ -190,20 +190,20 @@
         <button class="ghost tiny" id="btnAddRule">+ 添加规则</button>
       </div>
       <div id="ruleList" class="rule-list"></div>
-      <div class="hint">规则保存在场景 config.json；规则出错只记日志，不影响收发。</div>
+      <div class="hint" data-tipify>规则保存在场景 config.json；规则出错只记日志，不影响收发。</div>
 
       <div class="field">
         <span>自动命令白名单（逗号分隔）</span>
         <input type="text" id="allowList" placeholder="如：R, X, Z">
       </div>
-      <div class="hint">白名单为空 = 禁止一切自动命令。</div>
+      <div class="hint" data-tipify>白名单为空 = 禁止一切自动命令。</div>
     </div>
 
     <div class="divider"></div>
     <button class="ghost" id="btnPausePort">暂停并释放串口</button>
     <div class="hint" id="pauseHint">网页仍可用，只是把串口让给串口助手。</div>
     <button class="danger" id="btnExit">彻底退出</button>
-    <div class="hint">退出会停服务并关闭串口，之后网页无法访问。</div>
+    <div class="hint" data-tipify>退出会停服务并关闭串口，之后网页无法访问。</div>
   </aside>
 </main>
 

@@ -258,6 +258,8 @@ import { initPortPicker } from './js/pickport.js';
     var el = $('controlstate');
     el.dataset.state = st;
     el.textContent = STATE_LABEL[st] || st;
+    // 控制权真变了才弹一下（第一次渲染不算）
+    if (lastStatus.control !== null && lastStatus.control !== st) pulse(el);
     // 按钮规则：
     //   目标状态 ≠ 当前 → 可用（合法迁移）
     //   目标状态 = 当前 → 也可用，点了给出"已经在你手中"的反馈
@@ -354,6 +356,14 @@ import { initPortPicker } from './js/pickport.js';
     lastState = data;
     curPort = data.port || '';
     setPageTitle();
+  }
+
+  /** 让某个元素"弹一下"（重置动画再放，否则连续两次不会重播）。 */
+  function pulse(el) {
+    if (!el) return;
+    el.classList.remove('pop');
+    void el.offsetWidth;      // 强制重排：动画才能重放
+    el.classList.add('pop');
   }
 
   /** 窗口标题：`鲸歌 · COM7 · 场景名`（1.13）。
@@ -572,6 +582,29 @@ import { initPortPicker } from './js/pickport.js';
   /* ── 角标（1.23）：触屏没有 hover，所以点一下也要能展开 ──
      规则：点角标 = 开/关；点别处 = 收起；Esc = 收起。
      气泡是绝对定位的，展开时不挤邻居（撑开布局是最容易做错的地方）。 */
+
+  // 先把"解释性的一行长文字"批量收成角标（1.23 的推广，见 index.html 的 data-tipify）。
+  // 为什么在 JS 里搬而不是直接写死 data-tip：HTML 里留着原文，改文案时不用两头对照。
+  // 角标会挂到最近的标题后面（"显示模式 ⓘ"），而不是自己占一整行。
+  document.querySelectorAll('[data-tipify]').forEach(function (el) {
+    var text = (el.textContent || '').trim();
+    if (!text) { el.remove(); return; }
+    el.setAttribute('data-tip', text);
+    el.setAttribute('aria-label', text);
+    el.classList.remove('hint');
+    el.classList.add('tip');
+    el.textContent = '';
+    el.tabIndex = 0;
+    var host = el.closest('.field');
+    // 只把**字段级**的说明挪到标签后面（"显示模式 ⓘ"）。
+    // 小组级的说明就地留成一个 ⓘ，否则它们会全挤到同一个标题后面（试过，一排三个角标，很难看）。
+    var label = host ? host.querySelector(':scope > span, :scope > .title') : null;
+    if (label) {
+      label.appendChild(document.createTextNode(' '));
+      label.appendChild(el);
+    }
+  });
+
   document.addEventListener('click', function (ev) {
     document.querySelectorAll('.tip.open').forEach(function (tip) {
       if (!tip.contains(ev.target)) tip.classList.remove('open');
