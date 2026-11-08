@@ -45,6 +45,10 @@ class WatchLoop(object):
         self.last_error = None
         self.device = ""
         self.running = False
+        # 手动发送的时间窗：读线程用它判断"这段回显是手动触发的"。
+        # 以前这个属性只在 WebServer 上，读线程读 self._manual_until 直接 AttributeError
+        # —— 第一条回显就把读线程干掉，之后"只有 TX 没有 RX"（1.31 的根因）。
+        self._manual_until = 0.0
         # 判定统一交给 RuleChecker（与管家共用同一份逻辑，不再各写一份）
         self.checker = RuleChecker(scene, state, logger, send_action=self._send_rule)
 
@@ -129,11 +133,14 @@ class WatchLoop(object):
                 cfg["wait_first_byte_ms"] = max(50, min(current, interval_ms - 50))
         newline = serial_io.decode_newline(cfg.get("newline"), "\\r\\n")
         if self.running and self.ser is not None:
-            # 原始字节模式不补换行，帧由调用方给全（见 io.transact 的说明）
-            if raw_bytes is not None:
-                self.ser.write(raw_bytes)
-            else:
-                self.ser.write(str(command).encode("utf-8") + newline)
+            # **握手柄时也必须互斥**：定时线程和网页/AI 的手动发送会同时写同一个口，
+            # 不锁的话两条命令的字节会交错，设备收到的就是乱码（表现为"不回话"）。
+            # 1.31 实测：定时 500ms 跑着时 AI 发命令，日志只有 TX 没有 RX。
+            with self.port_lock:
+                if raw_bytes is not None:
+                    self.ser.write(raw_bytes)
+                else:
+                    self.ser.write(str(command).encode("utf-8") + newline)
             self.logger.append("TX", command)
             # 监视模式：回显走读线程进 buffer，这里只记"发了什么"。
             # **但帧上必须标出来**：以前这里什么都不标，于是界面上看起来像
@@ -215,14 +222,21 @@ class WatchLoop(object):
                 continue
             if not chunk:
                 continue
-            with self.lock:
-                self.buffer.extend(chunk)
-            text = chunk.decode("utf-8", errors="replace")
-            self.logger.append("RX", text)
-            self.no_response_streak = 0
-            # 刚手动/网页发过命令 → 这段回显算 manual，否则算轮询 watch
-            source = "manual" if time.time() < self._manual_until else "watch"
-            self._run_checks(text, source, chunk)
+            # 这一段**必须整体兜住**：读线程一旦因为某次处理异常悄悄死掉，
+            # 之后所有回显都进不了缓冲 —— 页面/接口看到的就是"只有 TX 没有 RX"，
+            # 而且 running 还是 True、watch_error 还是空（1.31 现场就是这样）。
+            try:
+                with self.lock:
+                    self.buffer.extend(chunk)
+                text = chunk.decode("utf-8", errors="replace")
+                self.logger.append("RX", text)
+                self.no_response_streak = 0
+                # 刚手动/网页发过命令 → 这段回显算 manual，否则算轮询 watch
+                source = "manual" if time.time() < self._manual_until else "watch"
+                self._run_checks(text, source, chunk)
+            except Exception as exc:          # noqa: BLE001 读线程不能死
+                self.last_error = "处理回显失败：%s" % exc
+                continue
 
     def _send_loop(self):
         """（已停用）定时发送现在由 WebServer._autosend_loop 统一负责。

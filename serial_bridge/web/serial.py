@@ -22,6 +22,30 @@ from .util import parse_hex as _parse_hex
 class SerialMixin(object):
 
     # ── 动作 ────────────────────────────────────────────────────────────────
+    def _wait_echo(self, timeout_s, silence_s):
+        """从读线程的缓冲里凑一条回显：先等首字节，再等到静默。
+
+        为什么不用 `transact()`：那个会 open/close 一次，而此刻口正被自家握着。
+        这里只读缓冲（`loop.take()`），不动句柄。
+        """
+        out = b""
+        deadline = time.time() + timeout_s
+        while time.time() < deadline and not out:
+            out += self.loop.take()
+            if not out:
+                time.sleep(0.01)
+        if not out:
+            return b""
+        quiet_at = time.time() + silence_s
+        while time.time() < quiet_at:
+            chunk = self.loop.take()
+            if chunk:
+                out += chunk
+                quiet_at = time.time() + silence_s
+            else:
+                time.sleep(0.01)
+        return out
+
     def send(self, text, mode="text", actor="human", source="web"):
         """发一条命令。
 
@@ -66,19 +90,48 @@ class SerialMixin(object):
         else:
             payload_bytes = command.encode("utf-8")
 
-        if self.mode == "watch" and self.loop.running and self.loop.ser is not None:
+        # 口被**自家**握着就用它写，别再 open 一次（1.31）。
+        # 以前这里只判 `mode == "watch"`，而 1.8 尾巴让"轻模式定时期间也握口"，
+        # 于是定时一开，AI 工具来发命令就会走 transact → 打开被自家句柄挡住 →
+        # 报"被其他程序占用（串口助手）"，其实占它的是我们自己。
+        if self.loop.running and self.loop.ser is not None:
+            # 口被**自家**握着就用它写，别再 open 一次（1.31）：1.8 尾巴让"轻模式定时期间也握口"，
+            # 而这里原来只判 `mode == "watch"`，于是定时一开，AI 工具来发命令就会去 open →
+            # 被自家句柄挡住 → 报"被其他程序占用（串口助手）"，其实占它的是我们自己。
             if mode == "hex":
-                # 原始字节模式不补换行，帧由调用方给全（见 io.transact 的说明）
-                self.loop.ser.write(payload_bytes)
+                payload = payload_bytes          # 原始字节：不补换行
             else:
-                self.loop.ser.write(payload_bytes + serial_io.decode_newline(
-                    self.effective_cfg().get("newline"), "\\r\\n"))
-            self.logger.append("TX", command)
-            # 标记"接下来这一小段回显是手动触发的"，读线程据此把来源标成 manual
-            self._manual_until = time.time() + 2.0
-            if source != "web":
-                self.loop._push_frame(command, "", "", 0, source)
-            return {"ok": True, "accepted": True, "mode": self.mode}
+                payload = payload_bytes + serial_io.decode_newline(
+                    self.effective_cfg().get("newline"), "\\r\\n")
+            # **写 + 等回显整段持锁**：定时线程也在写同一个口，字节交错就是乱码，
+            # 设备收到的不是一条完整命令（实测表现为"只有 TX 没有 RX"）。
+            with self.loop.port_lock:
+                self.loop.take()                 # 倒掉写之前就在缓冲里的旧字节
+                self.loop.ser.write(payload)
+                self.logger.append("TX", command)
+                # 标记"接下来这段回显是手动触发的"，读线程据此把来源标成 manual。
+                # **两处都要标**：self 是 WebServer（自己的逻辑用），loop 是读线程真正读的那个。
+                self._manual_until = time.time() + 2.0
+                self.loop._manual_until = self._manual_until
+                if source != "web":
+                    self.loop._push_frame(command, "", "", 0, source)
+                if self.mode == "watch":
+                    return {"ok": True, "accepted": True, "mode": self.mode}
+                # 轻模式（定时占口）也要**同步拿回显**：只回 accepted 会让调用方按
+                # no_response 判失败 —— 等于换个姿势失败。
+                cfg = self.effective_cfg()
+                raw = self._wait_echo(
+                    max(0.8, int(cfg.get("wait_first_byte_ms") or 1500) / 1000.0),
+                    max(0.02, int(cfg.get("timeout_read_ms") or 200) / 1000.0))
+            text = raw.decode("utf-8", errors="replace")
+            if text:
+                self.logger.append("RX", text)
+            return {"ok": True, "accepted": True, "mode": self.mode,
+                    "port": (self.state.read().get("port") or ""),
+                    "rx_text": text,
+                    "rx_hex": " ".join("%02X" % b for b in raw),
+                    "bytes": len(raw), "empty": not raw}
+
 
         resolved = self.current_device()
         cfg = self.effective_cfg()
