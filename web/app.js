@@ -152,6 +152,22 @@ import { pollChannel } from './js/channel.js';
     $('modePill').textContent = data.mode === 'watch' ? '监视模式（占口）' : '轻模式（不占口）';
     document.querySelector('input[name=wmode][value=' + (data.mode || 'light') + ']').checked = true;
 
+    // 定时节奏：数字全部来自 /status，前端**不自己算**（否则和真实发送会对不上）。
+    // 用户上次就是"凭感觉觉得不对"却拿不出数字，这条就是为了让他能自己判。
+    var statsEl = $('autoStats');
+    if (statsEl) {
+      var sent = Number(data.sent_count) || 0;
+      var gap = Number(data.avg_gap_ms) || 0;
+      var skipped = Number(data.sent_skipped) || 0;
+      if (!sent && !skipped) {
+        statsEl.textContent = '';
+      } else {
+        statsEl.textContent = '已发 ' + sent + ' 次' +
+          (gap ? ' · 实际 ' + gap + ' ms' : '') +
+          (skipped ? ' · 漏 ' + skipped : '');
+      }
+    }
+
     // 谁占着这个口。
     // 轻模式下后端**不探测**（打开 CH340 会拉 DTR/RTS，可能给板子来一次复位），
     // 只显示"状态未知"；想知道真答案就点这个胶囊，走 /port/probe 主动试一次。

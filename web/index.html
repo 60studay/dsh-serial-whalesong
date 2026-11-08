@@ -143,6 +143,8 @@
         <span>定时发送</span>
         <input type="checkbox" id="sendEnabled"><span class="knob"></span>
       </label>
+      <!-- 节奏数字只来自 /status，前端不自己算（对面 16:20 明写的判据） -->
+      <div class="hint" id="autoStats"></div>
       <div class="field">
         <span>命令</span>
         <input type="text" id="watchCommand" placeholder="该场景的查询命令">

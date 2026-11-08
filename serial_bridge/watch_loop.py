@@ -107,6 +107,14 @@ class WatchLoop(object):
         每次发送都会往 auto_frames 里记一帧，网页据此显示命令 + 回显。
         """
         cfg = self.cfg_provider()
+        # 定时 / 规则自动处置：**不许等回包**。
+        # transact 的等待由 cfg["timeout_read_ms"] 控制，默认 500ms；
+        # 这里压到 80ms —— 板子秒回时照样拿到回显（规则还能判），
+        # 板子不回话时也只拖 80ms，节奏不会被 1.5s 的等首字节吃掉。
+        # 迟到（>80ms）的回包按"迟到"处理，不补判、不改节奏（对面 1.8 判据）。
+        if source in ("timer", "rule"):
+            cfg = dict(cfg)
+            cfg["timeout_read_ms"] = int(cfg.get("autosend_timeout_ms") or 80)
         newline = serial_io.decode_newline(cfg.get("newline"), "\\r\\n")
         if self.running and self.ser is not None:
             # 原始字节模式不补换行，帧由调用方给全（见 io.transact 的说明）
