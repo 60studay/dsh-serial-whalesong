@@ -180,6 +180,8 @@ class SharedState(object):
             current["changed_by"] = changed_by
             current["note"] = note
             self._write(current)
+            # 同一个物理口只有**一套**控制权（用户 23:1x 拍板 A 方案）
+            self._sync_same_port(current)
             return current
         finally:
             self._release()
@@ -197,9 +199,61 @@ class SharedState(object):
             current["changed_by"] = changed_by
             current["note"] = note
             self._write(current)
+            self._sync_same_port(current)
             return current
         finally:
             self._release()
+
+    def _sync_same_port(self, current):
+        """把控制权同步给**同一个物理口号**的其它场景。
+
+        为什么：控制权原来按场景存，而一个口经常被多个场景引用
+        （STC8G测试板 / 定时测试 / 蓝牙AT 都可能挂在 COM10 上）。
+        用户在 A 场景点[交给AI]，AI 的工具却走 B 场景 → B 那份还是 human →
+        用户看到"我明明交了权，它还说没权限"（真实反馈）。
+
+        规则：**同一个口只有一套控制权**。谁改了，同口的场景一起跟。
+        不碰别的字段（端口/波特率/定时都是各场景自己的）。
+        """
+        device = str(current.get("port") or "").strip()
+        if not device:
+            return
+        new_state = current.get("state")
+        changed_by = current.get("changed_by") or "unknown"
+        note = current.get("note") or ""
+        try:
+            names = sorted(os.listdir(self.dir))
+        except OSError:
+            return
+        for name in names:
+            if not name.endswith(".json") or name.endswith(".web.json"):
+                continue
+            path = os.path.join(self.dir, name)
+            if os.path.abspath(path) == os.path.abspath(self.path):
+                continue
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    data = json.load(handle)
+            except (OSError, ValueError):
+                continue
+            if str(data.get("port") or "").strip() != device:
+                continue
+            if data.get("state") == new_state:
+                continue
+            data["state"] = new_state
+            data["since"] = _now()
+            data["changed_by"] = changed_by
+            data["note"] = (note + "（同口 %s 同步）" % device).strip()
+            tmp = path + ".tmp%d.%d" % (os.getpid(), threading.get_ident())
+            try:
+                with open(tmp, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, ensure_ascii=False, indent=2)
+                os.replace(tmp, path)
+            except OSError:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
 
     def update(self, **fields):
         """更新端口/波特率/监视配置等附带信息，不动 state 本身。"""
