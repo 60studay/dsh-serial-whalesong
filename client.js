@@ -14,10 +14,16 @@
  *
  * 数据从 /api/whalesong/prefs 来（host 侧转给 Python 内核，单一实现、原子写）。
  */
+// ── 最外层兜底（1.29-a）────────────────────────────────────────────
+// 目的只有一个：**我们这一半出错，绝不能让 DSH 界面白屏**。
+// 注意边界：如果异常是在本文件第一行之前抛的（比如有人插在文件最顶部），
+// 任何插件都救不了 —— 那是宿主的加载器行为。所以验收插桩请插在下面的标记行之后。
+try {
 window.__ModuleLoader__.load({
   id: 'dsh-whalesong',
   factory: (require) => {
     try {
+      // ← 验收 10 的故意异常请**插在这一行之后**（插在文件第一行任何插件都救不了）
       const React = require('react');
       const h = React.createElement;
 
@@ -114,6 +120,20 @@ window.__ModuleLoader__.load({
         apply(ctx) {
           // 这一层单独 try：样式/槽位出问题也只丢设置页
           try {
+            // 安全模式（1.29-b）：面板出过问题时，用 ?ws-safe=1 打开一次，
+            // 或控制台执行 localStorage.setItem('dsh-whalesong.safe','1') ——
+            // 客户端半端直接不注册，**9 个工具照常可用**。清掉标记就恢复。
+            let unsafe = false;
+            try {
+              unsafe = String(location.search || '').indexOf('ws-safe=1') >= 0
+                || window.localStorage.getItem('dsh-whalesong.safe') === '1';
+            } catch { /* 隐私模式拿不到 localStorage：当没开启 */ }
+            if (unsafe) {
+              console.info('[dsh-whalesong] 安全模式：设置面板已跳过（工具不受影响）。'
+                + '去掉 ?ws-safe=1 或 localStorage.removeItem("dsh-whalesong.safe") 可恢复。');
+              return;
+            }
+
             const style = document.createElement('style');
             style.setAttribute('data-plugin-css', 'dsh-whalesong');
             style.textContent = CSS;
@@ -140,3 +160,7 @@ window.__ModuleLoader__.load({
     }
   },
 });
+} catch (fatal) {
+  // 连注册都失败（极罕见）：只留一行日志，工具那一半照常
+  console.warn('[dsh-whalesong] 客户端半端注册失败（9 个工具不受影响）：', fatal);
+}
