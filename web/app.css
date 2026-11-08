@@ -57,6 +57,11 @@
     --err-fg: #ff8a8a;
     --err-line: #8b2a2a;
     --switch-off-bg: #444;
+    /* 次级按钮的"面"：透明按钮和背景融成一片，用户看不出那是个按钮（18:19 反馈） */
+    --btn-face: rgba(255, 255, 255, .07);
+    --btn-highlight: rgba(255, 255, 255, .10);
+    --btn-shadow: rgba(0, 0, 0, .38);
+    --line-strong: #5a5a5a;
     --switch-knob: #ccc;
     --overlay-bg: rgba(0, 0, 0, .6);
 
@@ -70,6 +75,10 @@
     --muted: #6a6a6a; --accent: #0e639c; --accent-hover: #1177bb;
     --human: #1a7f37; --ai: #0969da; --paused: #9a6700; --danger: #cf222e;
     --btn-fg: #fff; --brand: #4ec9b0;
+    --btn-face: #ffffff;
+    --btn-highlight: rgba(255, 255, 255, .95);
+    --btn-shadow: rgba(0, 0, 0, .12);
+    --line-strong: #b4b4b4;
   }
   @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
@@ -138,7 +147,15 @@
   .pill {
     padding: 2px 10px; border-radius: 10px; font-size: 12px;
     border: 1px solid var(--line); color: var(--muted);
+    /* 1.24 换成界面字体之后英文/数字变宽，页头在 1100px 宽时会把右边的按钮挤出屏幕。
+       允许胶囊收缩 + 省略，页头就不会撑破（原来写死 nowrap 只能靠裁）。 */
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 0 1 auto;
   }
+  /* 页头不许横向滚出去：宁可让中间的胶囊缩写，也不能把"设置"按钮藏掉 */
+  header { overflow: hidden; }
+  header > * { flex-shrink: 0; }
+  header .pill, header .scene, header .brand { flex-shrink: 1; }
   #alertbar {
     display: none; padding: 8px 14px; background: var(--danger-bg);
     border-bottom: 1px solid var(--danger); color: var(--danger); font-size: 13px;
@@ -325,8 +342,14 @@
   button { transition: transform .06s ease, background .15s ease; }
   button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
   button:disabled { opacity: .4; cursor: not-allowed; }
-  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--fg); }
-  button.ghost:hover:not(:disabled) { background: var(--hover-bg); }
+  /* 次级按钮（AI 自动选择 / 读一次 / 清空 / 交给AI…）：
+     原来是 transparent + 1px 淡边，和面板底色几乎一个色，看不出能点（用户 18:19 反馈）。
+     现在给它一个"面"：浅底 + 更亮的边 + 顶部内高光 + 一点投影，深浅两套都站得住。 */
+  button.ghost {
+    background: var(--btn-face); border: 1px solid var(--line-strong); color: var(--fg);
+    box-shadow: inset 0 1px 0 var(--btn-highlight), 0 1px 2px var(--btn-shadow);
+  }
+  button.ghost:hover:not(:disabled) { background: var(--hover-bg); border-color: var(--muted); }
   button.danger { background: var(--danger); }
   button.danger:hover { filter: brightness(1.15); }
 
@@ -494,7 +517,9 @@
   .tl-item.warn { color: var(--paused); }
   .tl-item.bad  { color: var(--danger); }
   .group-hint { color: var(--muted); font-size: 11px; line-height: 1.4; margin-top: -2px; }
-  #sidebarToggle { display: none; }
+  /* 1.25：这个按钮原来被 `display: none` 藏掉了（layout.js 却一直在给它绑事件，
+     等于"有功能没入口"）。现在放出来：它是侧栏收起/展开的唯一入口。 */
+  #sidebarToggle { flex-shrink: 0; }
   /* 端口占用状态 */
   #portOwner { font-size: 11px; }
   #portOwner[data-owner=ours]  { color: var(--ai); }

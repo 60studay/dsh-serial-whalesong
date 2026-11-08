@@ -129,7 +129,32 @@ document.addEventListener('mouseup', function () {
   if (layout) saveLayout(layout);
 });
 
-// 侧边栏收起/展开：属于布局，跟规则无关，所以放在这一层。
-sidebarToggle.addEventListener('click', function () {
-  sidebar.classList.toggle('collapsed');
+/* ── 侧边栏收起/展开（1.25）──────────────────────────────
+ *  为什么放在 layout 层：它是布局，不是"设置项"，和规则/串口无关。
+ *  三条规则（用户 17:40 提的"构想"，对面给的判据）：
+ *    1. 收起的**状态要记住**（刷新/重启回来还是收起的），存进 whale.layout
+ *    2. **窄屏默认收起**（<900px）：小窗口里那 258px 太金贵
+ *    3. 用户手动点过就以用户为准，不再被"窄屏默认"覆盖
+ */
+function applySidebar() {
+  var hidden = (layout.sideHidden !== undefined)
+    ? !!layout.sideHidden
+    : (window.innerWidth < 900);
+  $('sidebar').classList.toggle('collapsed', hidden);
+  var btn = $('sidebarToggle');
+  btn.textContent = hidden ? '▸ 设置' : '◂ 收起';
+  btn.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+  btn.title = hidden ? '展开设置栏' : '收起设置栏';
+}
+
+$('sidebarToggle').addEventListener('click', function () {
+  layout.sideHidden = !$('sidebar').classList.contains('collapsed');
+  saveLayout(layout);
+  applySidebar();
+});
+
+applySidebar();
+window.addEventListener('resize', function () {
+  // 只在用户从没手动选过的时候，跟着窗口宽度自动收/放
+  if (layout.sideHidden === undefined) applySidebar();
 });
