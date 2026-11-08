@@ -98,15 +98,41 @@ export function startViewerHeartbeat(opts) {
     text.textContent = '这个页面已经失效：串口网页服务已关闭。服务重启后本页会自动恢复；等不及就点右边关掉，或按下面提示处理。';
     bar.appendChild(text);
 
+    // ① 「立即重连」：这个**一定有效**（服务回来了点它就活，服务没回来就再失败一次）
+    var retryBtn = document.createElement('button');
+    retryBtn.textContent = '立即重连';
+    retryBtn.setAttribute('style',
+      'font:inherit;padding:4px 12px;border-radius:6px;cursor:pointer;' +
+      'border:1px solid #f59e0b;background:#f59e0b;color:#fff;font-weight:600');
+    retryBtn.addEventListener('click', function () {
+      retryBtn.textContent = '重连中…';
+      window.location.reload();
+    });
+    bar.appendChild(retryBtn);
+
+    // ② 「关闭本页」：标签是用户自己开的，浏览器**不允许**脚本关它 ——
+    // 以前点了毫无反应（用户 21:4x 报的"点了好像什么都没发生"）。
+    // 现在关不掉就**把按钮改成提示语**，让这一下点击有可见结果。
     var btn = document.createElement('button');
     btn.textContent = '关闭本页';
     btn.setAttribute('style',
       'font:inherit;padding:4px 12px;border-radius:6px;cursor:pointer;' +
-      'border:1px solid #f59e0b;background:#f59e0b;color:#fff;font-weight:600');
+      'border:1px solid var(--line,#3c3c3c);background:transparent;color:#7c2d12;font-weight:600');
     btn.addEventListener('click', function () {
-      try { window.close(); } catch (e) { /* 被拦就按提示走 */ }
-      var hint = document.getElementById('dead-close-hint');
-      if (hint) hint.style.display = '';
+      try { window.close(); } catch (e) { /* 被拦就走下面的降级 */ }
+      setTimeout(function () {
+        if (window.closed) return;          // 真关掉了：什么都不用做
+        var hint = document.getElementById('dead-close-hint');
+        if (hint) {
+          hint.style.display = '';
+          hint.style.fontWeight = '700';
+          hint.style.color = '#7c2d12';
+        }
+        btn.textContent = '浏览器不让脚本关标签 → 按 Ctrl+W';
+        btn.disabled = true;
+        btn.style.opacity = '.6';
+        btn.style.cursor = 'default';
+      }, 250);
     });
     bar.appendChild(btn);
 
