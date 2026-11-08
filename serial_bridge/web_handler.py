@@ -64,7 +64,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 html = self.ctx["page"]
                 return self._send(200, html, "text/html; charset=utf-8")
-            if path in ("/app.css", "/app.js") or (
+            if path in ("/app.css", "/app.js", "/brand.png") or (
                     path.startswith("/js/") and path.endswith(".js")):
                 # R2/R2b 把样式和逻辑拆成了独立文件，必须真的能把它们发出去，
                 # 否则页面一加载就是白屏（而且只在浏览器控制台报 404，很难查）。
@@ -100,7 +100,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 limit = int((query.get("limit") or ["100"])[0])
                 return self._json(self.ctx["channel_list"](since, limit))
             if path == "/favicon.ico":
-                return self._send(204, b"")
+                # 标签页图标也用同一只鲸鱼：用户一眼能在标签栏认出"这是鲸歌"，
+                # 配合"[已失效]"前缀，失效标签更好认。
+                asset = self.ctx["asset"]("/brand.png")
+                if asset is None:
+                    return self._send(204, b"")
+                body, content_type = asset
+                return self._send(200, body, content_type)
             return self._json({"ok": False, "error": {"kind": "not_found",
                                                       "message": path}}, 404)
         except BridgeError as exc:

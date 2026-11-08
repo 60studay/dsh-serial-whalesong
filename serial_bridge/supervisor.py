@@ -415,14 +415,15 @@ def _load_page():
 _ASSET_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
+    ".png": "image/png",
 }
 
 
 def _load_asset(name):
-    """读 web/ 下的静态文件（app.css / app.js / js/*.js）。
+    """读 web/ 下的静态文件（app.css / app.js / js/*.js / brand.png）。
 
     返回 (bytes, content_type)；不存在返回 None。
-    白名单式：只认 .css/.js，**只允许 js/ 这一层子目录**，不许 `..`。
+    白名单式：只认 .css/.js/.png，**只允许 js/ 这一层子目录**，不许 `..`。
     这是"网页能读服务器文件"的唯一入口，边界必须是死的。
     """
     base = str(name or "").lstrip("/")

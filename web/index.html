@@ -6,11 +6,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>鲸歌</title>
+  <link rel="icon" type="image/png" href="/brand.png">
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 <header>
-  <h1>鲸歌</h1>
+  <!-- 品牌区：图标 + 名字。名字用 span 而不是写死在 h1 里，
+       以后出英文版（Whalesong）直接换文字，宽度靠 CSS 自适应，
+       长名字最多到 40% 屏宽然后省略号，不会把右边的状态胶囊挤掉。 -->
+  <span class="brand">
+    <img class="brand-mark" src="/brand.png" alt="" width="26" height="26">
+    <span class="brand-name" id="brandName">鲸歌</span>
+  </span>
   <span class="scene" id="sceneName">·</span>
   <span class="pill" id="portPill">—</span>
   <span class="pill" id="portOwner">—</span>

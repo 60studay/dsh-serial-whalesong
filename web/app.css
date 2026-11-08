@@ -47,7 +47,31 @@
     padding: 10px 14px; border-bottom: 1px solid var(--line);
   }
   header h1 { font-size: 15px; margin: 0; color: var(--brand); font-weight: 600; }
+  /* 品牌区：白鲸图 + 名字。
+     图本身是"白色鲸鱼 + 透明底"，所以底色由这里给——跟着主题的强调色走，
+     深色主题下就是一块蓝底白鲸，浅色主题下也是，不会糊成一片。 */
+  header .brand {
+    display: flex; align-items: center; gap: 9px;
+    flex: 0 1 auto; min-width: 0;
+  }
+  header .brand-mark {
+    width: 26px; height: 26px; flex: none;
+    padding: 3px; box-sizing: border-box;
+    border-radius: 8px;
+    background: var(--accent);
+    object-fit: contain;
+  }
+  header .brand-name {
+    font-size: 15px; font-weight: 600; color: var(--brand);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: min(38vw, 320px);   /* 留给英文版：长了就省略，不挤掉右边 */
+  }
   header .scene { color: var(--muted); }
+  /* 场景名也可能很长（比如 "Modbus从站-车间三号机"），同样允许收缩 */
+  header .scene {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 0 1 auto;
+  }
   header .spacer { flex: 1; }
   .pill {
     padding: 2px 10px; border-radius: 10px; font-size: 12px;

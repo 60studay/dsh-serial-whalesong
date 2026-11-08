@@ -291,9 +291,17 @@ def run_checks(base, original):
         check("GET /rules  有 rule_types", isinstance(data.get("rule_types"), list),
               str(type(data.get("rule_types"))))
 
-    # 7. /favicon.ico 应该 204 而不是 500
+    # 7. /favicon.ico 现在发的就是那只鲸鱼（以前返回 204 空）
     status, _ = http_get(base, "/favicon.ico")
-    check("GET /favicon.ico  返回 204", status == 204, "status=%s" % status)
+    check("GET /favicon.ico  返回 200", status == 200, "status=%s" % status)
+
+    # 7a. 页头品牌图：图标要真能发出去，否则页头会空一块
+    status, text = http_get(base, "/")
+    check("GET /  页头有品牌图", 'class="brand-mark"' in text, text[:120])
+    check("GET /  引用了 /brand.png", "/brand.png" in text, text[:120])
+    check("GET /  留了英文名的位置", 'class="brand-name"' in text, text[:120])
+    status, _ = http_get(base, "/brand.png")
+    check("GET /brand.png  返回 200", status == 200, "status=%s" % status)
 
     # 7b. 看客心跳：页面靠它判断"浏览器窗口还在不在"
     #     （决定下次用串口要不要把页面重新弹给用户）
