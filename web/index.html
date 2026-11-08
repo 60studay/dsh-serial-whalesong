@@ -203,29 +203,9 @@
       <div class="hint" data-tipify>白名单为空 = 禁止一切自动命令。</div>
     </div>
 
-    <!-- 外观（2.2）：三项都只是**变量**，不动任何规则/CSS 结构。
-         背景图只挂在 body::before 那一层，页头/侧栏是不透明的 —— logo 任何时候都清楚。 -->
-    <div class="group">
-      <span class="title">外观</span>
-      <div class="hint" data-tipify>只改这一台的样子，存在运行期状态里（不进 config、不进仓库）；「恢复默认」一键回原样。</div>
-      <div class="field">
-        <span>背景图地址</span>
-        <input type="text" id="themeBg" placeholder="https://…（留空 = 不铺背景）">
-      </div>
-      <div class="field">
-        <span>背景不透明度</span>
-        <input type="range" id="themeAlpha" min="0" max="100" step="5" value="100">
-      </div>
-      <div class="field">
-        <span>主色</span>
-        <div class="row">
-          <input type="color" id="themeAccent" value="#0e639c" style="flex:0 0 44px">
-          <button class="ghost" id="btnThemeSave" style="flex:1">应用</button>
-        </div>
-      </div>
-      <button class="ghost tiny" id="btnThemeReset">恢复默认</button>
-      <div class="hint" id="themeNote"></div>
-    </div>
+    <!-- 外观（2.2）：用户要求"别占侧栏地方，塞个按钮，点开再设" —— 这里只留入口，
+         真正的设置在下面那个弹窗里。 -->
+    <button class="ghost" id="btnOpenTheme">外观…</button>
 
     <div class="divider"></div>
     <button class="ghost" id="btnPausePort">暂停并释放串口</button>
@@ -234,6 +214,48 @@
     <div class="hint" data-tipify>退出会停服务并关闭串口，之后网页无法访问。</div>
   </aside>
 </main>
+
+<!-- 外观弹窗（2.2）：背景图 / 面板透明度 / 侧栏底色与图 / 主色。
+     全部只落到 CSS 变量上；值存在运行期状态（不进 config、不进仓库）。 -->
+<div id="themeModal" class="modal">
+  <div class="modal-box">
+    <h3>外观</h3>
+    <div class="hint">只改这一台的样子；「恢复默认」一键回原样。</div>
+    <div class="field">
+      <span>背景图地址（整页）</span>
+      <input type="text" id="themeBg" placeholder="https://…（留空 = 不铺）">
+    </div>
+    <div class="field">
+      <span>背景不透明度</span>
+      <input type="range" id="themeAlpha" min="0" max="100" step="5" value="100">
+    </div>
+    <div class="field">
+      <span>面板不透明度（收发区 / 状态轨道 / 输入框）</span>
+      <input type="range" id="themePanel" min="0" max="100" step="5" value="100">
+    </div>
+    <div class="field">
+      <span>侧栏背景图</span>
+      <input type="text" id="themeSideBg" placeholder="https://…（留空 = 不铺）">
+    </div>
+    <div class="field">
+      <span>侧栏底色 / 不透明度</span>
+      <div class="row">
+        <input type="color" id="themeSideColor" value="#252526" style="flex:0 0 44px">
+        <input type="range" id="themeSideAlpha" min="0" max="100" step="5" value="100" style="flex:1">
+      </div>
+    </div>
+    <div class="field">
+      <span>主色</span>
+      <input type="color" id="themeAccent" value="#0e639c">
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="btnThemeReset">恢复默认</button>
+      <button class="ghost" id="btnThemeClose">关闭</button>
+      <button class="ghost" id="btnThemeSave">应用</button>
+    </div>
+    <div class="hint" id="themeNote"></div>
+  </div>
+</div>
 
 <!-- 规则编辑弹窗 -->
 <div id="ruleModal" class="modal">

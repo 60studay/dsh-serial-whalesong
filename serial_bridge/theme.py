@@ -29,6 +29,12 @@ DEFAULTS = {
     "bg_image": "",      # 空 = 不铺背景图
     "bg_alpha": 1.0,     # 背景图的不透明度（只影响背景层）
     "accent": "",        # 空 = 用主题自带主色
+    # 用户 18:5x：收发区/状态轨道/输入框"和背景不搭"，希望能调透明度
+    "panel_alpha": 1.0,  # 面板不透明度（收发区 / 状态轨道 / 输入框）
+    # 侧栏想单独改底色、单独铺图
+    "side_image": "",    # 空 = 侧栏不铺图
+    "side_color": "",    # 空 = 用主题底色
+    "side_alpha": 1.0,   # 侧栏不透明度
 }
 
 _ALLOWED_PREFIXES = ("http://", "https://", "data:image/")
@@ -60,6 +66,15 @@ def read_theme(paths):
         pass
     if isinstance(raw.get("accent"), str) and _HEX_RE.match(raw["accent"].strip()):
         data["accent"] = raw["accent"].strip()
+    for key in ("panel_alpha", "side_alpha"):
+        try:
+            data[key] = max(0.0, min(1.0, float(raw.get(key, 1.0))))
+        except (TypeError, ValueError):
+            pass
+    if isinstance(raw.get("side_image"), str):
+        data["side_image"] = raw["side_image"]
+    if isinstance(raw.get("side_color"), str) and _HEX_RE.match(raw["side_color"].strip()):
+        data["side_color"] = raw["side_color"].strip()
     return data
 
 
@@ -76,12 +91,14 @@ def write_theme(paths, patch):
 
     merged = read_theme(paths)
     for key, value in patch.items():
-        if key == "bg_image":
-            merged["bg_image"] = _check_bg_image(value)
-        elif key == "bg_alpha":
-            merged["bg_alpha"] = _check_alpha(value)
-        else:
+        if key in ("bg_image", "side_image"):
+            merged[key] = _check_bg_image(value, key)
+        elif key in ("bg_alpha", "panel_alpha", "side_alpha"):
+            merged[key] = _check_alpha(value, key)
+        elif key == "accent":
             merged["accent"] = _check_accent(value)
+        else:
+            merged["side_color"] = _check_accent(value, "side_color")
 
     path = theme_path(paths)
     directory = os.path.dirname(path)
@@ -97,7 +114,7 @@ def write_theme(paths, patch):
     return merged
 
 
-def _check_bg_image(value):
+def _check_bg_image(value, key="bg_image"):
     text = str(value or "").strip()
     if not text:
         return ""
@@ -110,22 +127,22 @@ def _check_bg_image(value):
     return text
 
 
-def _check_alpha(value):
+def _check_alpha(value, key="bg_alpha"):
     try:
         number = float(value)
     except (TypeError, ValueError):
-        raise BridgeError("config", "bg_alpha 要 0~1 之间的数字，收到：%r" % (value,))
+        raise BridgeError("config", "%s 要 0~1 之间的数字，收到：%r" % (key, value))
     if number > 1:            # 顺手接受百分数：用户填 60 就是 0.6
         number = number / 100.0
     if not (0.0 <= number <= 1.0):
-        raise BridgeError("config", "bg_alpha 要 0~1 之间（或 0~100 的百分数）。")
+        raise BridgeError("config", "%s 要 0~1 之间（或 0~100 的百分数）。" % key)
     return round(number, 3)
 
 
-def _check_accent(value):
+def _check_accent(value, key="accent"):
     text = str(value or "").strip()
     if not text:
         return ""
     if not _HEX_RE.match(text):
-        raise BridgeError("config", "主色要写成 #rgb 或 #rrggbb，收到：%r" % (value,))
+        raise BridgeError("config", "%s 要写成 #rgb 或 #rrggbb，收到：%r" % (key, value))
     return text

@@ -69,6 +69,11 @@
     --bg-image: none;
     --bg-alpha: 1;
     --logo: currentColor;
+    /* 外观（2.2）用户可调：面板不透明度 / 侧栏底色与图 */
+    --panel-alpha: 1;
+    --side-image: none;
+    --side-color: var(--bg);
+    --side-alpha: 1;
   }
   :root[data-theme="light"] {
     --bg: #ffffff; --panel: #f6f6f6; --line: #d0d0d0; --fg: #1f1f1f;
@@ -122,8 +127,25 @@
      面板（收发区/侧栏/弹窗）本来就有不透明底色，天然盖住背景图 —— 不用逐个加 z-index。 */
   html { background: var(--bg); }
   body { background: transparent; }
-  #console { background: var(--panel); }
-  aside { background: var(--bg); }
+  /* 面板底色统一走这里：先给不透明色兜底，再用 color-mix 按 --panel-alpha 变半透明。
+     color-mix 不被支持时上面那条不透明声明生效 —— 退化只会"透不了"，不会看不见字。 */
+  #console, .composer textarea, #timeline, .rule-item, .modal-box {
+    background-color: var(--panel);
+    background-color: color-mix(in srgb,
+      var(--panel) calc(var(--panel-alpha) * 100%), transparent);
+  }
+  /* 侧栏底色的透明度同理（图不受影响） */
+  aside {
+    background-color: color-mix(in srgb,
+      var(--side-color, var(--bg)) calc(var(--side-alpha) * 100%), transparent);
+  }
+  /* 侧栏：底色能单独换、也能单独铺图（用户 18:5x 问的"侧边栏也能改颜色/插图吗"）。
+     --side-alpha 只影响底色，不影响图 —— 图铺满，底色负责"字看不看得清"。 */
+  aside {
+    background-color: var(--side-color, var(--bg));
+    background-image: var(--side-image, none);
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+  }
   header { background: var(--bg); }
   header {
     display: flex; align-items: center; gap: 12px;

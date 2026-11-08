@@ -13,19 +13,44 @@
 
 import { $, api, post, errText } from './core.js';
 
-var current = { bg_image: '', bg_alpha: 1, accent: '' };
+var current = {};
+
+function pct(value) {
+  var n = parseInt(value, 10);
+  return (isNaN(n) ? 100 : n) / 100;
+}
 
 export function applyTheme(theme) {
   var t = theme || {};
   var root = document.documentElement;
-  var alpha = (t.bg_alpha === undefined || t.bg_alpha === null) ? 1 : t.bg_alpha;
-  current = { bg_image: t.bg_image || '', bg_alpha: alpha, accent: t.accent || '' };
+  var a = function (v) { return (v === undefined || v === null) ? 1 : v; };
+  current = {
+    bg_image: t.bg_image || '',
+    bg_alpha: a(t.bg_alpha),
+    accent: t.accent || '',
+    panel_alpha: a(t.panel_alpha),
+    side_image: t.side_image || '',
+    side_color: t.side_color || '',
+    side_alpha: a(t.side_alpha)
+  };
+
   root.style.setProperty('--bg-image', current.bg_image ? 'url("' + current.bg_image + '")' : 'none');
-  root.style.setProperty('--bg-alpha', String(alpha));
+  root.style.setProperty('--bg-alpha', String(current.bg_alpha));
+  root.style.setProperty('--panel-alpha', String(current.panel_alpha));
+  root.style.setProperty('--side-image', current.side_image ? 'url("' + current.side_image + '")' : 'none');
+  root.style.setProperty('--side-alpha', String(current.side_alpha));
+  if (current.side_color) root.style.setProperty('--side-color', current.side_color);
+  else root.style.removeProperty('--side-color');
   if (current.accent) root.style.setProperty('--accent', current.accent);
   else root.style.removeProperty('--accent');
+
+  // 回填控件（弹窗打开时看到的就是当前值）
   if ($('themeBg')) $('themeBg').value = current.bg_image;
-  if ($('themeAlpha')) $('themeAlpha').value = String(Math.round(alpha * 100));
+  if ($('themeAlpha')) $('themeAlpha').value = String(Math.round(current.bg_alpha * 100));
+  if ($('themePanel')) $('themePanel').value = String(Math.round(current.panel_alpha * 100));
+  if ($('themeSideBg')) $('themeSideBg').value = current.side_image;
+  if ($('themeSideAlpha')) $('themeSideAlpha').value = String(Math.round(current.side_alpha * 100));
+  if ($('themeSideColor') && current.side_color) $('themeSideColor').value = current.side_color;
   if ($('themeAccent') && current.accent) $('themeAccent').value = current.accent;
 }
 
@@ -45,24 +70,40 @@ function save(patch, okText) {
 }
 
 export function initTheme() {
-  if (!$('btnThemeSave')) return;      // 页面上没有这批控件（老页面/被裁掉）就别折腾
+  var btnOpen = $('btnOpenTheme');
+  if (!btnOpen) return;                 // 页面上没有这批控件就别折腾
+
+  btnOpen.addEventListener('click', function () {
+    $('themeModal').classList.add('show');
+  });
+  $('btnThemeClose').addEventListener('click', function () {
+    $('themeModal').classList.remove('show');
+  });
+  // 点弹窗外的遮罩也能关（和规则弹窗一样的手感）
+  $('themeModal').addEventListener('click', function (ev) {
+    if (ev.target === $('themeModal')) $('themeModal').classList.remove('show');
+  });
 
   $('btnThemeSave').addEventListener('click', function () {
     save({
       bg_image: $('themeBg').value.trim(),
-      bg_alpha: (parseInt($('themeAlpha').value, 10) || 0) / 100,
+      bg_alpha: pct($('themeAlpha').value),
+      panel_alpha: pct($('themePanel').value),
+      side_image: $('themeSideBg').value.trim(),
+      side_color: $('themeSideColor').value,
+      side_alpha: pct($('themeSideAlpha').value),
       accent: $('themeAccent').value
     }, '已应用');
   });
 
   $('btnThemeReset').addEventListener('click', function () {
-    $('themeBg').value = '';
-    $('themeAlpha').value = '100';
-    save({ bg_image: '', bg_alpha: 1, accent: '' }, '已恢复默认');
+    save({
+      bg_image: '', bg_alpha: 1, panel_alpha: 1,
+      side_image: '', side_color: '', side_alpha: 1, accent: ''
+    }, '已恢复默认');
   });
 
   // 兜底钩子（对面 B 方案）：web/custom.css 存在就挂上，不存在就什么都不做。
-  // 高手能写任意 CSS，我们不用管；文件缺失也能自己摘掉，不在控制台留一堆 404。
   var link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = '/custom.css';
