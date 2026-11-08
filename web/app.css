@@ -136,9 +136,15 @@
   #console:empty::before {
     content: attr(placeholder); color: var(--muted); opacity: .55;
   }
-  /* 一行 = 一条命令，或一段回显。第二列的左边界就是命令文字的左边界，
-     所以"设备回的话"天然和命令对齐，不需要额外缩进。 */
-  .ln { display: grid; grid-template-columns: var(--tagw) 1fr; column-gap: 8px; }
+  /* 一行 = 一条命令，或一段回显。第三列的左边界就是命令文字的左边界，
+     所以"设备回的话"天然和命令对齐，不需要额外缩进。
+     第二列是时间（我→硬件、硬件→我，各打一次，见 app.js newRow）。 */
+  .ln { display: grid; grid-template-columns: var(--tagw) auto 1fr; column-gap: 8px; }
+  .ln > .t {
+    color: var(--muted); font-size: 11px; line-height: 1.6;
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+    user-select: text;      /* 时间要能选中复制，排查时序问题时要粘出来 */
+  }
   .ln > .body { white-space: pre-wrap; word-break: break-all; min-width: 0; }
   /* ── 收发方向徽章：一眼分清是谁发的 ────────────────────
      颜色沿用已有的语义色：AI=蓝、人=绿、定时=黄、设备=灰。
