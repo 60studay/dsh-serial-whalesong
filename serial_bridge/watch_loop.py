@@ -123,8 +123,13 @@ class WatchLoop(object):
             else:
                 self.ser.write(str(command).encode("utf-8") + newline)
             self.logger.append("TX", command)
-            # 监视模式：回显走读线程进 buffer，这里只记"发了什么"
-            self._push_frame(command, "", "", 0, source)
+            # 监视模式：回显走读线程进 buffer，这里只记"发了什么"。
+            # **但帧上必须标出来**：以前这里什么都不标，于是界面上看起来像
+            # "发了、设备没回"，和"真的没回"分不开——排查时会把两种完全不同的
+            # 情况混成一个（这次就是：命令可能已经到了 COM7，只是帧里没回显）。
+            frame = self._push_frame(command, "", "", 0, source)
+            if isinstance(frame, dict):
+                frame["rx_pending"] = True
             return ""
         resolved = resolve_port(cfg)
         with self.port_lock:
@@ -151,13 +156,16 @@ class WatchLoop(object):
         return self.send_raw(command, source="rule")
 
     def _push_frame(self, tx, rx, rx_hex, nbytes, source="auto"):
+        """记一帧给网页显示。返回这一帧本身，调用方可以补字段（比如 rx_pending）。"""
+        frame = {
+            "tx": tx, "rx": rx, "hex": rx_hex,
+            "bytes": int(nbytes or 0), "ts": time.time(), "source": source,
+        }
         with self.lock:
-            self.auto_frames.append({
-                "tx": tx, "rx": rx, "hex": rx_hex,
-                "bytes": int(nbytes or 0), "ts": time.time(), "source": source,
-            })
+            self.auto_frames.append(frame)
             if len(self.auto_frames) > 200:
                 del self.auto_frames[:-200]
+        return frame
 
     def take_frames(self):
         """取走待显示的自动发送帧。"""
