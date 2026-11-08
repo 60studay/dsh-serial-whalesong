@@ -44,10 +44,11 @@ import { pollChannel } from './js/channel.js';
     }
   }
 
-  /** 建一行：左列徽章、中间时间、右列正文。返回正文节点供调用方追加。
+  /** 建一行：左列徽章、中间正文、右列时间（像目录的页码，靠右对齐成一栏）。
    *
-   *  时间只在这一行**新起**时打一次：同一条命令的回显接着写在同一个 body 里，
-   *  不会每段回显都刷一个时间（那会把日志冲成一堆时间戳）。
+   *  时间只在这一行**新起**时打一次：同一条命令的回显接着写同一个 body，
+   *  不会每段回显都刷一个时间。
+   *  顺序是 徽章 → 正文 → 时间：时间放最右边，不切碎"谁发了什么"的阅读流。
    */
   function newRow(tagClass, tagText) {
     var row = document.createElement('div');
@@ -55,14 +56,14 @@ import { pollChannel } from './js/channel.js';
     var tag = document.createElement('span');
     tag.className = 'tag ' + tagClass;
     tag.textContent = tagText;
+    var body = document.createElement('span');
+    body.className = 'body';
     var stamp = document.createElement('span');
     stamp.className = 't';
     stamp.textContent = nowText();
-    var body = document.createElement('span');
-    body.className = 'body';
     row.appendChild(tag);
-    row.appendChild(stamp);
     row.appendChild(body);
+    row.appendChild(stamp);
     consoleEl.appendChild(row);
     return body;
   }

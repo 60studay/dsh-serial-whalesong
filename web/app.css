@@ -136,13 +136,14 @@
   #console:empty::before {
     content: attr(placeholder); color: var(--muted); opacity: .55;
   }
-  /* 一行 = 一条命令，或一段回显。第三列的左边界就是命令文字的左边界，
-     所以"设备回的话"天然和命令对齐，不需要额外缩进。
-     第二列是时间（我→硬件、硬件→我，各打一次，见 app.js newRow）。 */
-  .ln { display: grid; grid-template-columns: var(--tagw) auto 1fr; column-gap: 8px; }
+  /* 一行 = 一条命令，或一段回显。徽章 / 正文 / 时间三栏，
+     时间靠右对齐成一整列（像目录的页码）——放前面会切碎"谁发了什么"的阅读流。
+     正文那一列吃满剩余宽度，所以回显天然和命令的左边界对齐。 */
+  .ln { display: grid; grid-template-columns: var(--tagw) 1fr auto; column-gap: 10px; align-items: baseline; }
   .ln > .t {
     color: var(--muted); font-size: 11px; line-height: 1.6;
     white-space: nowrap; font-variant-numeric: tabular-nums;
+    justify-self: end;      /* 右对齐成栏 */
     user-select: text;      /* 时间要能选中复制，排查时序问题时要粘出来 */
   }
   .ln > .body { white-space: pre-wrap; word-break: break-all; min-width: 0; }
@@ -278,6 +279,12 @@
   }
   aside.collapsed { display: none; }
   .group { display: flex; flex-direction: column; gap: 6px; }
+  /* 侧边栏的功能分组之间拉一条淡线：串口设置 / 显示模式 / 连接模式 /
+     定时发送 / 异常判定各自成块，扫视时不用靠猜哪里换题了。 */
+  .group + .group {
+    margin-top: 4px; padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
   .group > label.title { color: var(--muted); font-size: 12px; letter-spacing: .5px; }
   .field { display: flex; flex-direction: column; gap: 4px; }
   .field span { color: var(--muted); font-size: 12px; }
@@ -285,8 +292,26 @@
     width: 100%; background: var(--panel); color: var(--fg);
     border: 1px solid var(--line); border-radius: 4px; padding: 7px 8px; font: inherit;
   }
-  .radio { display: flex; gap: 14px; font-size: 13px; }
-  .radio label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  /* 二选一改成"滑动开关"（分段控件）：
+     两个选项等宽、底色小胶囊滑过去，比一排圆点更像现在的 UI。
+     纯 CSS 实现（:has 找选中的那个），不改任何 JS 逻辑。 */
+  .radio {
+    position: relative; display: inline-flex; width: 100%; max-width: 240px;
+    padding: 2px; border: 1px solid var(--line); border-radius: 999px;
+    font-size: 12px; gap: 0;
+  }
+  .radio::before {
+    content: ""; position: absolute; top: 2px; bottom: 2px; left: 2px;
+    width: calc(50% - 2px); border-radius: 999px; background: var(--accent);
+    transition: transform 140ms ease;
+  }
+  .radio:has(label:nth-of-type(2) input:checked)::before { transform: translateX(100%); }
+  .radio label {
+    position: relative; z-index: 1; flex: 1 1 0; justify-content: center;
+    padding: 3px 6px; color: var(--muted); gap: 0;
+  }
+  .radio label:has(input:checked) { color: var(--btn-fg); font-weight: 600; }
+  .radio input { position: absolute; opacity: 0; pointer-events: none; }
   .switch {
     display: flex; align-items: center; justify-content: space-between;
     background: var(--panel); border: 1px solid var(--line);
