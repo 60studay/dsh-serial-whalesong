@@ -244,6 +244,23 @@ def run_checks(base, original):
     # 去掉它徽章会随文字变宽，竖排正文左边界就开始跳。
     check("app.css 里徽章列仍是定宽变量", "--tagw" in css_text, css_text[:60])
     check("app.css 有回显说明的样式（1.14）", ".note" in css_text, "")
+
+    # 1.21~1.23（用户人工测试前提的三条 UI 优化）：
+    # 这三条都属于"改回去就悄悄退步"，所以钉成检查，别只靠人眼。
+    check("1.21 「读一次 / 清空」不再是 tiny 小按钮",
+          'class="tiny ghost" id="btnReadOnce"' not in text
+          and 'class="tiny ghost" id="btnClear"' not in text, "")
+    check("1.21 两个按钮有独立尺寸规则（≥28px 高）",
+          ".tl-actions button" in css_text, "")
+    brand_block = css_text.split("header .brand-name")[-1][:200] if "header .brand-name" in css_text else ""
+    check("1.22 左上角标题走中性色（不再吃品牌绿）",
+          "var(--fg)" in brand_block and "var(--brand)" not in brand_block, brand_block[:60])
+    check("1.23 控制权说明是角标（可聚焦 + data-tip）",
+          'id="controlhint" class="tip"' in text and 'tabindex="0"' in text, "")
+    tip_block = css_text.split(".tip::after")[-1][:600] if ".tip::after" in css_text else ""
+    check("1.23 气泡绝对定位且不吃点击",
+          "position: absolute" in tip_block and "pointer-events: none" in tip_block,
+          tip_block[:60])
     check("GET /js/channel.js 有导出", "export function pollChannel" in chan_text,
           chan_text[:60])
     check("页面用 type=module 加载",

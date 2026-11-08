@@ -277,7 +277,12 @@ import { initPortPicker } from './js/pickport.js';
       paused: '已暂停：谁都不发，点[继续AI]或[人类接管]恢复'
     };
     var ch = $('controlhint');
-    if (ch) ch.textContent = CONTROL_HINT[st] || '';
+    if (ch) {
+      // 1.23：解释改成角标，文字写进 data-tip（气泡内容）和 aria-label（读屏）
+      var tipText = CONTROL_HINT[st] || '';
+      ch.setAttribute('data-tip', tipText);
+      ch.setAttribute('aria-label', tipText);
+    }
 
     var w = data.watch || {};
     // ⚠️ 用户正在编辑表单时**不许用轮询的值覆盖他**。
@@ -563,6 +568,24 @@ import { initPortPicker } from './js/pickport.js';
   $('checkSource').addEventListener('change', pushWatch);
   $('watchCommand').addEventListener('change', pushWatch);
   $('watchInterval').addEventListener('change', pushWatch);
+
+  /* ── 角标（1.23）：触屏没有 hover，所以点一下也要能展开 ──
+     规则：点角标 = 开/关；点别处 = 收起；Esc = 收起。
+     气泡是绝对定位的，展开时不挤邻居（撑开布局是最容易做错的地方）。 */
+  document.addEventListener('click', function (ev) {
+    document.querySelectorAll('.tip.open').forEach(function (tip) {
+      if (!tip.contains(ev.target)) tip.classList.remove('open');
+    });
+  });
+  document.querySelectorAll('.tip').forEach(function (tip) {
+    tip.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      tip.classList.toggle('open');
+    });
+    tip.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') tip.classList.remove('open');
+    });
+  });
 
   /* ── 选口那组动作（1.19 移进 js/pickport.js）──────────────
      那边只负责"点按钮之后发什么请求"；刷新下拉框和跑轮询留在这里，

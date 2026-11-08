@@ -45,7 +45,7 @@
     <div id="paneSerial" class="pane">
     <!-- 系统事件轨道：控制权/端口/告警等，与串口数据分区显示 -->
     <div id="timeline">
-      <div class="tl-head"><span>状态轨道</span><span class="tl-actions"><button class="tiny ghost" id="btnReadOnce">读一次</button><button class="tiny ghost" id="btnClear" title="清空回显、状态轨道和告警记录">清空</button></span></div>
+      <div class="tl-head"><span>状态轨道</span><span class="tl-actions"><button class="ghost" id="btnReadOnce">读一次</button><button class="ghost" id="btnClear" title="清空回显、状态轨道和告警记录">🗑 清空</button></span></div>
       <div id="timelineList"></div>
     </div>
     <div id="console" tabindex="0" placeholder="串口收发内容会显示在这里…"></div>
@@ -58,7 +58,9 @@
     <div id="controlbar">
       <span class="hint">控制权</span>
       <span id="controlstate" data-state="human">人工</span>
-      <span id="controlhint" class="hint">人工控制：AI 不能发命令</span>
+      <!-- 1.23：常显解释改成角标，悬停/聚焦/点击展开（文案由 app.js 按当前状态写进 data-tip） -->
+      <span id="controlhint" class="tip" tabindex="0" role="note"
+            aria-label="人工控制：AI 不能发命令，你可以直接用串口助手"></span>
       <span class="sep">|</span>
       <button class="ghost" data-action="ai"     id="btnAi">交给AI</button>
       <button class="ghost" data-action="pause"  id="btnPause">暂停AI</button>
