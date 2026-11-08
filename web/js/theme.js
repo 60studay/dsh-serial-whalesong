@@ -54,6 +54,18 @@ export function applyTheme(theme) {
     side_alpha: a(t.side_alpha)
   };
 
+  // 自由变量（别人写的皮肤变量）**先套**，官方项后设 —— 冲突时**官方优先**。
+  // 以前顺序反了：extra 里的 --accent 会盖掉弹窗里的「主色」，
+  // 用户看到的就是"怎么改都是那个颜色"（真实反馈，19:0x 修的）。
+  (appliedExtra || []).forEach(function (name) { root.style.removeProperty(name); });
+  appliedExtra = [];
+  Object.keys(t.extra || {}).forEach(function (name) {
+    if (/^--[a-z0-9][a-z0-9-]{0,39}$/.test(name)) {
+      root.style.setProperty(name, String(t.extra[name]));
+      appliedExtra.push(name);
+    }
+  });
+
   root.style.setProperty('--bg-image', current.bg_image ? 'url("' + current.bg_image + '")' : 'none');
   root.style.setProperty('--bg-alpha', String(current.bg_alpha));
   root.style.setProperty('--panel-alpha', String(current.panel_alpha));
@@ -63,6 +75,7 @@ export function applyTheme(theme) {
   else root.style.removeProperty('--side-color');
   if (current.accent) root.style.setProperty('--accent', current.accent);
   else root.style.removeProperty('--accent');
+
 
   // 文字颜色：空 = 用主题自带的中性色
   setOrDrop('--fg', t.fg_color);
@@ -75,16 +88,6 @@ export function applyTheme(theme) {
     setOrDrop('--' + row[0] + '-alpha', row[2] === '' || row[2] === undefined ? '' : row[2]);
   });
 
-  // 自由变量：先撤掉上一次设的，再按这次的设（别人写皮肤就改这些）
-  (appliedExtra || []).forEach(function (name) { root.style.removeProperty(name); });
-  appliedExtra = [];
-  var extra = t.extra || {};
-  Object.keys(extra).forEach(function (name) {
-    if (/^--[a-z0-9][a-z0-9-]{0,39}$/.test(name)) {
-      root.style.setProperty(name, String(extra[name]));
-      appliedExtra.push(name);
-    }
-  });
 
   // 回填控件（弹窗打开时看到的就是当前值）
   if ($('themeBg')) $('themeBg').value = current.bg_image;
