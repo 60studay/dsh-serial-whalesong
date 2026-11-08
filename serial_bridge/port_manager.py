@@ -45,7 +45,7 @@ class PortManager(object):
         # 管家在跑时绝不由网页再拿一次口——两个持有者必然抢口
         if self.daemon_url():
             return False
-        state = (control or self.state.read().get("state") or "human")
+        state = (control or self.state.read().get("state") or "ai")
         return self.mode_getter() == "watch" and state == STATE_AI
 
     # ── 释放 / 获取 ─────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ class PortManager(object):
         看门狗每秒比对一次，发现控制权变了就收敛一次。
         """
         try:
-            current = self.state.read().get("state") or "human"
+            current = self.state.read().get("state") or "ai"
         except Exception:
             return None
         previous = self._last_control

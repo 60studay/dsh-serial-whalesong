@@ -173,7 +173,7 @@ class Daemon(object):
     def send(self, text, mode="text", actor="human", wait_ms=None):
         self.touch()
         current = self.state.read()
-        control = current.get("state") or "human"
+        control = current.get("state") or "ai"
         if control == STATE_PAUSED:
             raise BridgeError("control_blocked", "控制权是 paused（已暂停），现在不能发命令。",
                               hint=["在网页点[继续AI]，或 human 接管后由人操作"])
@@ -311,7 +311,7 @@ class Daemon(object):
             "baud": int(self.scene.cfg.get("baud") or 0),
             "transport": describe_transport(self.scene.cfg,
                                             (self.resolved or {}).get("device")),
-            "control": current.get("state") or "human",
+            "control": current.get("state") or "ai",
             "mode": self.mode,
             "uptime_s": int(time.time() - self.started_at),
             "idle_s": int(time.time() - self.last_activity),

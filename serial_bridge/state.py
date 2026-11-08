@@ -10,6 +10,7 @@
       +----人类接管-----+----人类接管-----+
 
 安全规则：
+    0. **默认 ai**：没人操作时 AI 可以直接发（用户 22:3x 定）；人类一发命令就抢回去
     1. 人类命令永远优先：人类发命令时自动把状态拉回 human
     2. AI 发送前必须检查 state == 'ai'
     3. 状态持久化（就是这个文件）
@@ -35,8 +36,13 @@ TRANSITIONS = {
     STATE_PAUSED: {STATE_AI, STATE_HUMAN},
 }
 
+# 默认控制权 = **ai**（用户 22:3x 拍板："没人操作的时候默认权限一定是 AI 的"）。
+# 为什么不是 human：插件存在的意义就是"AI 在用串口"。默认拦着，等于每次开工都要人先点一下
+# [交给AI]，而绝大多数时候根本没人守在页面前。
+# 人类随时可以抢回去（发任何命令、或点[人类接管]），抢回去之后**保持** human，
+# 直到人点[交给AI] —— 默认宽松，但不夺权。
 DEFAULT_STATE = {
-    "state": STATE_HUMAN,
+    "state": STATE_AI,
     "since": 0.0,
     "changed_by": "init",
     "port": "",
@@ -126,7 +132,7 @@ class SharedState(object):
         merged = dict(DEFAULT_STATE)
         merged.update(data)
         if merged.get("state") not in VALID_STATES:
-            merged["state"] = STATE_HUMAN
+            merged["state"] = STATE_AI
         return merged
 
     def _write(self, data):
