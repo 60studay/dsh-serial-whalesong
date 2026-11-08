@@ -57,3 +57,4 @@ _[a-zA-Z0-9]*.py
 _*.log
 _*.log.*
 !_需求文档/结构账本.md
+!_webapi_http.py
