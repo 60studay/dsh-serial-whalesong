@@ -208,6 +208,22 @@ export function initTheme() {
     save(patch, '已应用');
   });
 
+  // 「跟随」：清掉某个窗口的单独设置（空串 = 继承 --panel / --panel-alpha）。
+  // 为什么需要它：这三个控件一旦被碰过，值就写死了，之后拖"面板不透明度"对它们**完全无效**
+  // —— 用户 21:5x 就是这么感觉"逻辑反了 / 没收效"的（收发窗口被设成 100 之后就不动了）。
+  [['Timeline', 'timeline'], ['Console', 'console'], ['Composer', 'composer']]
+    .forEach(function (pair) {
+      var btn = $('btnFollow' + pair[0]);
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        var patch = {};
+        patch[pair[1] + '_color'] = '';
+        patch[pair[1] + '_alpha'] = '';
+        touched[pair[1]] = false;
+        save(patch, '已改回跟随统一设置');
+      });
+    });
+
   $('btnResetFg').addEventListener('click', function () {
     touched.fg = true;
     var cs = getComputedStyle(document.documentElement);

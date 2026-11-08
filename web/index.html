@@ -230,7 +230,7 @@
       <input type="file" id="fileBg" accept="image/*" hidden>
     </div>
     <div class="field">
-      <span>背景不透明度</span>
+      <span>背景图浓度 <small>（0 = 看不见图，100 = 图最清楚）</small></span>
       <input type="range" id="themeAlpha" min="0" max="100" step="5" value="100">
     </div>
     <div class="field">
@@ -241,31 +241,31 @@
       </div>
     </div>
     <div class="field">
-      <span>面板不透明度（三个窗口一起调）</span>
+      <span>面板不透明度 <small>（0 = 全透明，100 = 实心）</small></span>
       <input type="range" id="themePanel" min="0" max="100" step="5" value="100">
     </div>
     <div class="field">
-      <span>状态轨道：颜色 / 不透明度</span>
+      <span>状态轨道：颜色 / 不透明度<button class="ghost" id="btnFollowTimeline" style="margin-left:6px;padding:0 6px;font-size:11px" title="清掉这一项的单独设置，重新跟随上面的统一面板设置">跟随</button></span>
       <div class="row">
         <input type="color" id="themeTimeline" value="#252526" style="flex:0 0 44px">
         <input type="range" id="themeTimelineA" min="0" max="100" step="5" value="100" style="flex:1">
       </div>
     </div>
     <div class="field">
-      <span>串口收发窗口：颜色 / 不透明度</span>
+      <span>串口收发窗口：颜色 / 不透明度<button class="ghost" id="btnFollowConsole" style="margin-left:6px;padding:0 6px;font-size:11px" title="清掉这一项的单独设置，重新跟随上面的统一面板设置">跟随</button></span>
       <div class="row">
         <input type="color" id="themeConsole" value="#252526" style="flex:0 0 44px">
         <input type="range" id="themeConsoleA" min="0" max="100" step="5" value="100" style="flex:1">
       </div>
     </div>
     <div class="field">
-      <span>输入指令窗口：颜色 / 不透明度</span>
+      <span>输入指令窗口：颜色 / 不透明度<button class="ghost" id="btnFollowComposer" style="margin-left:6px;padding:0 6px;font-size:11px" title="清掉这一项的单独设置，重新跟随上面的统一面板设置">跟随</button></span>
       <div class="row">
         <input type="color" id="themeComposer" value="#252526" style="flex:0 0 44px">
         <input type="range" id="themeComposerA" min="0" max="100" step="5" value="100" style="flex:1">
       </div>
     </div>
-    <div class="hint">三个窗口的「颜色/不透明度」不碰就跟随上面的统一设置；想单独调就动它们。</div>
+    <div class="hint">三个窗口不碰就跟随上面的统一设置；单独调过之后想回到跟随，点那个「跟随」。</div>
     <div class="field">
       <span>侧栏背景图</span>
       <div class="row">
