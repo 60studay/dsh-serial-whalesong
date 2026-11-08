@@ -73,7 +73,7 @@ class StatusMixin(object):
             # 解析不出串口时，把"现在插着哪些"和"需要人选一个"直接告诉前端 ——
             # 让页面**问人**，而不是悄悄锁在一个打不开的口上（用户 22:5x）。
             "port_choices": self.port_choices(),
-            "needs_port_choice": self.needs_port_choice(),
+            "needs_port_choice": None,          # 等解析结果出来再填（见下）
         }
         try:
             resolved = self.current_device()
@@ -92,6 +92,8 @@ class StatusMixin(object):
             # 而不是笼统报"找不到设备"——否则用户会以为整个配置坏了。
             if self.override_com and exc.kind in ("no_device", "ambiguous_device"):
                 data["override_stale"] = True
+            # 解析不出来 + 插着不止一个 → 该问人（用**一次**扫描的结果，别重复扫）
+            data["needs_port_choice"] = len(data["port_choices"]) > 1
         data["port_owner"] = self.ports.owner()
         return data
 
@@ -229,14 +231,29 @@ class StatusMixin(object):
 
 
     def port_choices(self):
-        """现在插着的串口（给"请选一个"的提示用）。"""
+        """现在插着的串口（给"请选一个"的提示用）。
+
+        **带 3 秒缓存**：页面每 700ms 拉一次 /status，而扫口在 Windows 上要 100~300ms
+        （枚举 + 逐个查描述）。不加缓存时 /status 从 ~10ms 涨到 ~300ms，
+        页面会明显发顿（用户 23:5x 报的"出来 bug 了"就是这个体感）。
+        """
+        now = time.time()
+        cached_at, cached = getattr(self, "_choices_cache", (0.0, []))
+        if now - cached_at < 3.0:
+            return cached
         try:
-            return sorted(item["device"] for item in scan_ports())
+            choices = sorted(item["device"] for item in scan_ports())
         except Exception:
-            return []
+            choices = []
+        self._choices_cache = (now, choices)
+        return choices
 
     def needs_port_choice(self):
-        """当前没有可用串口、但机器上插着不止一个 → 该问人，而不是替用户猜。"""
+        """当前没有可用串口、但机器上插着不止一个 → 该问人，而不是替用户猜。
+
+        注意：/status 里**不调这个**（它会再解析一次，等于又扫一遍口），
+        直接用那次解析的结果算，见 status() 里的 needs_port_choice 字段。
+        """
         try:
             self.current_device()
             return False

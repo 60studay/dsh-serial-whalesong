@@ -16,6 +16,8 @@
 真正的规则来自场景配置的 match / match_vid_pid 字段。
 """
 
+import time
+
 from .errors import BridgeError, port_label
 
 # 网页波特率下拉框的候选值。放在这里（而不是 supervisor）是因为
@@ -39,8 +41,21 @@ def _load_serial():
         )
 
 
-def scan_ports():
-    """返回当前所有串口的结构化列表（device / description / vid_pid / serial_number）。"""
+# 扫口缓存：Windows 上枚举 + 查描述要 100~300ms，而页面每 700ms 拉一次 /status。
+# 不缓存的话 /status 从 ~10ms 涨到 ~150ms，页面明显发顿（用户 23:5x 的实际体感）。
+# 1 秒 TTL：刚插上的设备最多晚 1 秒出现，换来的手感提升值这个价。
+_SCAN_CACHE = {"at": 0.0, "data": None}
+_SCAN_TTL_S = 1.0
+
+
+def scan_ports(force=False):
+    """返回当前所有串口的结构化列表（device / description / vid_pid / serial_number）。
+
+    `force=True` 跳过缓存（"AI 自动选择"这种明确要现况的地方用）。
+    """
+    now = time.time()
+    if not force and _SCAN_CACHE["data"] is not None and now - _SCAN_CACHE["at"] < _SCAN_TTL_S:
+        return [dict(item) for item in _SCAN_CACHE["data"]]
     _serial, list_ports = _load_serial()
     result = []
     for port in list_ports.comports():
@@ -56,6 +71,8 @@ def scan_ports():
             "serial_number": getattr(port, "serial_number", "") or "",
         })
     result.sort(key=lambda item: _port_sort_key(item["device"]))
+    _SCAN_CACHE["at"] = time.time()
+    _SCAN_CACHE["data"] = [dict(item) for item in result]
     return result
 
 
