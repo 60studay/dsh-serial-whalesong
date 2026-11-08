@@ -19,7 +19,16 @@ import { api } from './core.js';
 var FAILS_TO_DIE = 3;
 // 8899 跳过：那是 DSH 自己的端口。no-cors 探活只认"有没有回应"，
 // 探到 DSH 也算"通"，跳过去比留着死页更糟。
-var PROBE_PORTS = [8898, 8900, 8901, 8902, 8903, 8904, 8905, 8906, 8907];
+// 默认值只是"没配置时猜的"；真正用哪张表由后端 /status 的 probe_ports 决定（1.27）。
+// 8899 **故意跳过**：那是 DSH 自己的 Web GUI 端口，no-cors 探活只判断"有没有回应"，
+// 探到 DSH 也算通 —— 跳过去比留着死页更糟。
+var DEFAULT_PROBE_PORTS = [8898, 8900, 8901, 8902, 8903, 8904, 8905, 8906, 8907];
+var PROBE_PORTS = DEFAULT_PROBE_PORTS;
+
+/** 后端给了配置表就用它（app.js 在 /status 里顺手传进来）。 */
+export function setProbePorts(list) {
+  if (Array.isArray(list) && list.length) PROBE_PORTS = list;
+}
 
 export function startViewerHeartbeat(opts) {
   var onDead = (opts && opts.onDead) || function () {};

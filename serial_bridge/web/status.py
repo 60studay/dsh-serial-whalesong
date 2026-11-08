@@ -68,6 +68,8 @@ class StatusMixin(object):
             "override_baud": self.override_baud,
             "hold_released_reason": self.ports.hold_released_reason,
             "state_path": self.state.path,
+            # 失效标签自救时探测哪些端口（1.27：原来写死在前端，属于"这台机器的环境知识"）
+            "probe_ports": self.probe_ports(),
         }
         try:
             resolved = self.current_device()
@@ -201,3 +203,22 @@ class StatusMixin(object):
 
     def clear_alerts(self):
         return {"ok": True, "cleared": self.state.clear_alerts()}
+
+
+    # 默认探测表：8899 **跳过** —— 那是 DSH 自己的 Web GUI 端口。
+    # 探活用的是 no-cors，只判断"有没有回应"，探到 DSH 也算通；跳过去比留着死页更糟。
+    DEFAULT_PROBE_PORTS = [8898, 8900, 8901, 8902, 8903, 8904, 8905, 8906, 8907]
+
+    def probe_ports(self):
+        """失效标签自救时探测的端口表：场景/公共配置里有就用它，否则用默认。"""
+        raw = (self.scene.cfg.get("probe_ports")
+               or (self.state.read().get("probe_ports")))
+        ports = []
+        for item in (raw or []):
+            try:
+                value = int(item)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= value <= 65535:
+                ports.append(value)
+        return ports or list(self.DEFAULT_PROBE_PORTS)
