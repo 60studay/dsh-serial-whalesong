@@ -63,6 +63,9 @@ class StatusMixin(object):
             "alerts": self.state.read_alerts(5),
             "port": current.get("port") or "",
             "baud": current.get("baud") or int(self.effective_cfg().get("baud") or 0),
+            # 1.18：页面上手动选的串口存这儿，重启后仍然生效；空串 = 走 config 的匹配规则
+            "override_com": self.override_com,
+            "override_baud": self.override_baud,
             "hold_released_reason": self.ports.hold_released_reason,
             "state_path": self.state.path,
         }
@@ -70,6 +73,8 @@ class StatusMixin(object):
             resolved = self.current_device()
             data["resolved"] = resolved
             data["port"] = resolved["device"]
+            # 这个口是"我选的"还是"配置匹配出来的"——页面上要能看出来（1.18）
+            data["port_source"] = "override" if self.override_com else "auto"
             # 传输方式描述：网页侧边栏据此显示"串口 COM10 @115200"
             data["transport"] = transport_describe(
                 self.effective_cfg(), resolved["device"], resolved.get("baud"))
@@ -77,6 +82,10 @@ class StatusMixin(object):
             data["resolved"] = None
             data["resolve_error"] = exc.to_dict()
             data["transport"] = transport_describe(self.effective_cfg())
+            # 手动选的口不见了（拔了/换了 USB 口）：页面要明说"你锁的那个不在了"，
+            # 而不是笼统报"找不到设备"——否则用户会以为整个配置坏了。
+            if self.override_com and exc.kind in ("no_device", "ambiguous_device"):
+                data["override_stale"] = True
         data["port_owner"] = self.ports.owner()
         return data
 

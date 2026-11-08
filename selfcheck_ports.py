@@ -55,6 +55,79 @@ def use(ports):
     ports_mod.scan_ports = lambda: list(ports)
 
 
+def check_override_persistence():
+    """1.18：页面上选的串口是"这次的选择"，要存 state、活过重启，且**不写进 config.json**。
+
+    为什么单独拎一个函数：它要起一个真的 WebServer（只是不 serve），
+    和上面那些纯函数检查不是一回事。放在临时目录里跑，不碰用户的真实状态文件。
+    """
+    import json
+    import shutil
+    import tempfile
+
+    from serial_bridge.supervisor import WebServer
+
+    root = tempfile.mkdtemp(prefix="port18-")
+    try:
+        proto = os.path.join(root, "protocols")
+        os.makedirs(os.path.join(proto, "s"))
+        scene_cfg = os.path.join(proto, "s", "config.json")
+        # 配置里**只放匹配规则**，不写死口号 —— 这正是 1.18 想要的样子
+        with open(scene_cfg, "w", encoding="utf-8") as handle:
+            handle.write('{"match_vid_pid":"1A86:7523","baud":115200,"newline":"\\\\r\\\\n"}')
+        with open(os.path.join(root, "config.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"log_root":"%s"}' % os.path.join(root, "logs").replace("\\", "\\\\"))
+        cfg_before = open(scene_cfg, encoding="utf-8").read()
+
+        paths = {
+            "protocol_root": proto,
+            "common_config": os.path.join(root, "config.json"),
+            "log_root": os.path.join(root, "logs"),
+            "runtime_root": os.path.join(root, "logs", ".runtime"),
+        }
+        use(BT + [CH340_A, CH340_B])
+
+        srv = WebServer(paths, "s", port=8896, mode="light")
+        srv.reconnect("COM11", 9600)          # 用户在页面上选了第二块板子
+        state_file = os.path.join(paths["runtime_root"], "state", "s.json")
+        saved = json.load(open(state_file, encoding="utf-8"))
+        check("选的口落到 state 文件（override_com）",
+              saved.get("override_com") == "COM11", saved.get("override_com"))
+        check("波特率也一起存", int(saved.get("override_baud") or 0) == 9600,
+              saved.get("override_baud"))
+        check("effective_cfg 认这个覆盖（定时/规则也跟着走）",
+              srv.effective_cfg().get("com") == "COM11", srv.effective_cfg().get("com"))
+
+        # 「重启」= 同一份 state 重新 new 一个 WebServer（真的是这个路径：
+        # 进程重启后 __init__ 里就是把 state 读回来）
+        srv2 = WebServer(paths, "s", port=8896, mode="light")
+        check("重启后仍是 COM11", srv2.override_com == "COM11", srv2.override_com)
+        check("重启后 effective_cfg 也是 COM11",
+              srv2.effective_cfg().get("com") == "COM11", srv2.effective_cfg().get("com"))
+        try:
+            got = srv2.current_device()
+            check("重启后能直接解析到 COM11", got.get("device") == "COM11", got)
+        except BridgeError as exc:
+            check("重启后能直接解析到 COM11", False, exc.kind)
+
+        check("config.json 一个字没动", open(scene_cfg, encoding="utf-8").read() == cfg_before)
+
+        # 拔掉一块板子 → 回到自动识别 → 按配置规则应该自己找到剩下那块
+        use(BT + [CH340_A])
+        result = srv2.auto_port()
+        check("回到自动识别返回 ok", result.get("ok") is True, result)
+        check("清掉的是 COM11", result.get("cleared") == "COM11", result.get("cleared"))
+        check("清完按规则重新找到 COM10", result.get("port") == "COM10", result)
+        saved2 = json.load(open(state_file, encoding="utf-8"))
+        check("state 文件里的 override 也清了",
+              not saved2.get("override_com"), saved2.get("override_com"))
+        check("当前配置又不带口号了", "com" not in srv2.effective_cfg(),
+              srv2.effective_cfg())
+        check("config.json 依然一个字没动", open(scene_cfg, encoding="utf-8").read() == cfg_before)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main():
     original = ports_mod.scan_ports
     try:
@@ -125,6 +198,9 @@ def main():
 
         got = resolve_port({"match_serial": "SN-A", "com": "COM11"})
         check("序列号已能唯一命中时不看 com", got.get("device") == "COM10", got)
+
+        print("\n[8] 1.18：页面选的口写进 state、活过重启、能回到自动识别")
+        check_override_persistence()
     finally:
         ports_mod.scan_ports = original
 

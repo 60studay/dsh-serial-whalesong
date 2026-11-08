@@ -374,6 +374,12 @@
     color: var(--muted); font-size: 12px; margin-top: 2px;
   }
   button.tiny { padding: 3px 8px; font-size: 11px; }
+
+  /* 「已锁定 COMx」+「回到自动识别」：竖排一行字 + 一个整宽按钮。
+     一开始做成左右并排，侧边栏太窄 → 文字被挤成两行、按钮挤成一条，很难看。 */
+  .lockrow { display: flex; flex-direction: column; gap: 4px; }
+  .lockrow .hint { margin: 0; }
+  .lockrow[hidden] { display: none; }
   .rule-list { display: flex; flex-direction: column; gap: 4px; }
   .rule-item {
     background: var(--panel); border: 1px solid var(--line); border-radius: 4px;

@@ -152,6 +152,28 @@ import { pollChannel } from './js/channel.js';
     $('modePill').textContent = data.mode === 'watch' ? '监视模式（占口）' : '轻模式（不占口）';
     document.querySelector('input[name=wmode][value=' + (data.mode || 'light') + ']').checked = true;
 
+    // 1.18：手动选的串口会活过重启，所以必须让它看得见、也必须能一键撤销。
+    // 两块同型号板子（都是 CH340）时，用户最容易"不知道现在到底在用哪个"。
+    var lock = $('portLock');
+    if (lock) {
+      var lockedCom = data.override_com || '';
+      if (lockedCom) {
+        lock.hidden = false;
+        var lockText = $('portLockText');
+        if (data.override_stale) {
+          lockText.className = 'hint bad';
+          lockText.textContent = '已锁定的 ' + lockedCom + ' 现在找不到了';
+          lockText.title = '设备拔了或换了 USB 口。插上后重试，或点右边回到自动识别。';
+        } else {
+          lockText.className = 'hint';
+          lockText.textContent = '已锁定 ' + lockedCom + '，重启后仍然生效';
+          lockText.title = '这是你在页面上选的，不是 config.json 里写的';
+        }
+      } else {
+        lock.hidden = true;
+      }
+    }
+
     // 定时节奏：数字全部来自 /status，前端**不自己算**（否则和真实发送会对不上）。
     // 用户上次就是"凭感觉觉得不对"却拿不出数字，这条就是为了让他能自己判。
     var statsEl = $('autoStats');
@@ -285,11 +307,18 @@ import { pollChannel } from './js/channel.js';
   }
 
   /* ── 轮询 ─────────────────────────────────────────────── */
+  // 页面刚做过一次"选口 / 回到自动识别"：下一次重建下拉框要用这个值。
+  // 不能用 lastState.port —— 它要等下一次 /status 轮询才更新，最多晚 700ms，
+  // 于是下拉框会把刚选好的项又改回去（用户看到"点了又跳回旧口"）。
+  var preferredPort = null;
+
   function refreshPorts() {
     return api('/ports').then(function (data) {
-      if (data.ok) renderPorts({ ports: data.ports, bauds: data.bauds,
-                                 port: lastState && lastState.port,
-                                 baud: lastState && lastState.baud });
+      if (!data.ok) return;
+      renderPorts({ ports: data.ports, bauds: data.bauds,
+                    port: preferredPort || (lastState && lastState.port),
+                    baud: lastState && lastState.baud });
+      preferredPort = null;
     });
   }
 
@@ -641,10 +670,47 @@ import { pollChannel } from './js/channel.js';
             pushEvent('bad', '自动选择后连接失败：' + errLine(r.error));
             return;
           }
+          preferredPort = port;      // 让重建下拉框时别再跳回旧口
           refreshPorts(); tick();
         })
         .catch(function () { restore(); });
     }).catch(function (e) { fail({ message: '请求失败：' + (e && e.message || e) }); });
+  });
+
+  /* ── 回到自动识别（1.18）────────────────────────────────────
+     只清 state 里那个"这次选的串口"，config.json 一个字不动。
+     清完可能还是找不到口（拔了/换了口），那也是成功——用户要的是
+     "别再用我刚选的那个"，不是"必须马上找到一个"。 */
+  $('btnAutoPort').addEventListener('click', function () {
+    var btn = $('btnAutoPort');
+    var reason = $('autoReason');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    post('/port/auto', {}).then(function (data) {
+      btn.disabled = false;
+      if (!data.ok) {
+        pushEvent('bad', '回到自动识别失败：' + errLine(data.error));
+        return;
+      }
+      if (data.port) {
+        reason.className = 'hint ok';
+        reason.textContent = '✓ 已回到自动识别：' + data.port +
+          (data.source ? '（' + data.source + '）' : '');
+        pushEvent('', '回到自动识别：' + data.port);
+        // 下拉框也要跟着跳：否则它会停在上次手动选的那一项（COM7），
+        // 页头写着 COM10、下拉框标着 COM7 —— 用户一看就懵。
+        preferredPort = data.port;
+      } else {
+        reason.className = 'hint bad';
+        reason.textContent = '✗ ' + (data.note || '按配置暂时找不到串口');
+        pushEvent('bad', '回到自动识别：按配置暂时找不到串口');
+      }
+      refreshPorts();
+      tick();
+    }).catch(function (e) {
+      btn.disabled = false;
+      pushEvent('bad', '回到自动识别失败：' + ((e && e.message) || e));
+    });
   });
 
   /* ── 显式探测串口占用（只有点了才真的 open 一次）────── */

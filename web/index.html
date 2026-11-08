@@ -116,6 +116,13 @@
       </div>
       <button class="ghost" id="btnAuto">AI 自动选择</button>
       <div class="hint" id="autoReason"></div>
+      <!-- 1.18：手动选的口会活过重启，所以它必须看得见，也必须能一键撤销。
+           两个口同型号（都是 CH340）时，用户最容易"不知道现在到底在用哪个"。 -->
+      <div class="lockrow" id="portLock" hidden>
+        <div class="hint" id="portLockText"></div>
+        <button class="ghost tiny" id="btnAutoPort"
+                title="清掉手动选的口，回到 config.json 的匹配规则（不会改配置文件）">回到自动识别</button>
+      </div>
       <div class="field">
         <span>显示模式</span>
         <div class="radio">

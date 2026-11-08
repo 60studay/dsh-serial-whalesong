@@ -18,11 +18,26 @@ from ..rules import CHECK_SOURCES, RULE_TYPES, merge_watch, normalize_check_sour
 
 class PortMixin(object):
 
+    def _apply_override(self, com, baud):
+        """把手动选的串口写进内存 **和状态文件**（1.18）。
+
+        只写 `state/<场景>.json`，**绝不写 config.json**：
+        用户的原话是"这只是我这次选的，凭什么给我写进配置"。
+        config.json 放匹配规则（vid_pid / match_serial / match），state 放"这一次选谁"。
+        """
+        self.override_com = str(com or "")
+        try:
+            self.override_baud = int(baud or 0)
+        except (TypeError, ValueError):
+            self.override_baud = 0
+        self.state.update(override_com=self.override_com,
+                          override_baud=self.override_baud)
+
+
     def reconnect(self, com, baud):
-        if com:
-            self.override_com = com
-        if baud:
-            self.override_baud = int(baud)
+        if com or baud:
+            self._apply_override(com or self.override_com,
+                                 baud or self.override_baud)
         # 真重建：watch 模式先停旧口再按新参数开
         if self.mode == "watch":
             resolved = self.current_device()
@@ -37,7 +52,52 @@ class PortMixin(object):
             resolved = self.current_device()
             self.state.update(port=resolved["device"],
                               baud=int(self.effective_cfg().get("baud") or 0))
-        return {"ok": True, "port": self.current_device()["device"], "baud": self.effective_cfg().get("baud")}
+        return {"ok": True,
+                "port": self.current_device()["device"],
+                "baud": self.effective_cfg().get("baud"),
+                # 页面上据此显示"已锁定 COMx（重启后仍在）"
+                "override_com": self.override_com,
+                "override_baud": self.override_baud}
+
+
+    def auto_port(self):
+        """「回到自动识别」：丢掉手动选的口，回到 config 的匹配规则（+ 猜）。
+
+        只清 state 里的 override，**不动 config.json** —— 和 `_apply_override` 对称。
+        清掉之后如果配置也找不到口（拔了/换了口），**仍然算成功**：
+        用户要的是"别再用我刚选的那个"，不是"必须马上找到一个"。
+        所以返回 `resolved: null` + 错误详情，由页面提示下一步该点哪个按钮。
+        """
+        previous = self.override_com
+        self._apply_override("", 0)
+        resolved, error = None, None
+        try:
+            resolved = self.current_device()
+        except BridgeError as exc:
+            error = exc.to_dict()
+        if resolved:
+            if self.mode == "watch":
+                try:
+                    self.loop.start(resolved["device"],
+                                    int(self.effective_cfg().get("baud") or 115200))
+                except BridgeError as exc:
+                    error = exc.to_dict()
+            else:
+                # 轻模式不占口：只记下"现在解析到哪个口"，好让页头显示出来
+                self.state.update(port=resolved["device"],
+                                  baud=int(self.effective_cfg().get("baud") or 0))
+        result = {
+            "ok": True,
+            "cleared": previous,
+            "port": (resolved or {}).get("device") or "",
+            "source": (resolved or {}).get("source") or "",
+        }
+        if error:
+            result["resolved"] = None
+            result["resolve_error"] = error
+            result["note"] = ("已回到自动识别，但按场景配置暂时找不到串口。"
+                              "插上设备后点「AI 自动选择」重新找一次。")
+        return result
 
 
     def autodetect(self):

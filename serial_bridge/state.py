@@ -44,6 +44,10 @@ DEFAULT_STATE = {
     "scene": "",
     "watch": {},
     "note": "",
+    # 页面上手动选的串口（1.18）：**用户的运行期选择，不进 config.json**。
+    # 放在状态文件里，所以进程重启后仍然是它；空串 = 回到 config 的匹配规则。
+    "override_com": "",
+    "override_baud": 0,
 }
 
 

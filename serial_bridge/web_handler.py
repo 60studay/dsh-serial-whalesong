@@ -173,6 +173,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if path == "/reconnect":
                 return self._json(self.ctx["reconnect"](
                     str(body.get("com") or ""), int(body.get("baud") or 0)))
+            if path == "/port/auto":
+                # 「回到自动识别」：清掉页面手动选的口，回到 config 的匹配规则（1.18）
+                return self._json(self.ctx["auto_port"]())
             if path == "/autodetect":
                 return self._json(self.ctx["autodetect"]())
             if path == "/mode":

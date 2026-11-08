@@ -399,6 +399,27 @@ def run_checks(base, original):
         check("POST /reconnect  light 模式不报被占用",
               data2 is not None and data2.get("ok") is True, str(data2)[:150])
 
+    # 12c. /port/auto（1.18「回到自动识别」）
+    #      它必须能在**没有任何设备**的时候也返回 200：
+    #      用户拔了板子还想"别再用我刚选的那个"，那不是错误，是正常的撤销动作。
+    _, before_text = http_get(base, "/status")
+    before = as_json(before_text) or {}
+    had_override = before.get("override_com") or ""
+    status, text = http_post(base, "/port/auto", {})
+    data = as_json(text)
+    check("POST /port/auto  返回 200", status == 200, "status=%s" % status)
+    check("POST /port/auto  是 JSON 且 ok", data is not None and data.get("ok") is True,
+          text[:150])
+    _, after_text = http_get(base, "/status")
+    after = as_json(after_text) or {}
+    check("POST /port/auto  之后 override_com 清空",
+          not after.get("override_com"), after.get("override_com"))
+    if had_override:
+        # 我们改动了共享状态文件，得还给用户（这条自检和真实实例共用 state）
+        http_post(base, "/reconnect",
+                  {"com": had_override,
+                   "baud": int(before.get("override_baud") or 0)})
+
     # 13b. 严格模式：自己先把串口占住，再让 light 模式 reconnect。
     #      真正的 bug（light 模式 open 一下做"验证"）会在这里暴露成"被占用"。
     #

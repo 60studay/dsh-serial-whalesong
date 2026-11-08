@@ -62,8 +62,15 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         # （override_com / override_baud），否则会把命令发到 config 里写的口（1.12）。
         self.loop.cfg_provider = self.effective_cfg
         self.shutdown_event = threading.Event()
-        self.override_com = ""
-        self.override_baud = 0
+        # 页面选的口是**用户的选择**，必须活过重启（1.18）。
+        # 以前它只放内存，重启就静默退回 config.json 里那个口——
+        # 用户看到的现象是"我明明选了 COM7，重启又发到 COM10 去了"。
+        saved = self.state.read()
+        self.override_com = str(saved.get("override_com") or "")
+        try:
+            self.override_baud = int(saved.get("override_baud") or 0)
+        except (TypeError, ValueError):
+            self.override_baud = 0
         # 端口占用/释放/看门狗都交给 PortManager（它不碰界面，只管"谁该拿口"）
         self.ports = PortManager(
             state=self.state,
@@ -386,6 +393,7 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             "clear_alerts": self.clear_alerts,
             "resume_port": self.resume_port,
             "reconnect": self.reconnect,
+            "auto_port": self.auto_port,
             "autodetect": self.autodetect,
             "set_mode": self.set_mode,
             "channel_list": self.channel_list,
