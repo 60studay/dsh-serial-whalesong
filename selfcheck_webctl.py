@@ -85,6 +85,14 @@ def main():
         check("可以省略 --scene", args.scene == "", args.scene)
         check("action 默认值可用", args.action == "status", args.action)
         check("mode 默认 light", args.mode == "light", args.mode)
+        # 弹不弹浏览器是三态：不传 = 听设置页的开关（默认关），不能默认成 True。
+        # 这条是 openBrowser bug 的回归锁：以前 default=True，false 和"不传"都拦不住。
+        check("不传 flag 时 open_browser 是 None", args.open_browser is None,
+              args.open_browser)
+        check("--open-browser 是显式 True",
+              parser.parse_args(["webctl", "--open-browser"]).open_browser is True)
+        check("--no-browser 是显式 False",
+              parser.parse_args(["webctl", "--no-browser"]).open_browser is False)
     except SystemExit:
         check("webctl 参数可解析", False, "argparse 退出")
 

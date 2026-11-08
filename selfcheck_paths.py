@@ -47,8 +47,10 @@ def main():
           match is not None and os.path.basename(expected) == "logs")
 
     print("\n[3] 没有显式配置时，_paths() 回落到同一个值")
-    env_key = "SERIAL_BRIDGE_LOG_DIR"
-    had_env = os.environ.pop(env_key, None)
+    # 两个环境变量都要摘掉：只摘 LOG_DIR 的话，跑测试时若外面设了
+    # SERIAL_BRIDGE_RUNTIME_DIR，runtime 就会指向别处，这条断言会假失败。
+    env_keys = ("SERIAL_BRIDGE_LOG_DIR", "SERIAL_BRIDGE_RUNTIME_DIR")
+    saved_env = {key: os.environ.pop(key, None) for key in env_keys}
     try:
         from serial_bridge.config import read_json
         common = read_json(os.path.join(BASE, "config.json"), {}) or {}
@@ -63,8 +65,9 @@ def main():
                   paths["runtime_root"] == os.path.join(paths["log_root"], ".runtime"),
                   paths["runtime_root"])
     finally:
-        if had_env is not None:
-            os.environ[env_key] = had_env
+        for key, value in saved_env.items():
+            if value is not None:
+                os.environ[key] = value
 
     print()
     print("PASS %d / FAIL %d" % (len(PASS), len(FAIL)))

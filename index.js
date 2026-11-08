@@ -17,6 +17,7 @@ import { promisify } from 'node:util';
 
 import { makeEnv, readJson } from './helpers/env.js';
 import { renderError } from './helpers/errors.js';
+import { registerPrefsApi } from './helpers/prefs_api.js';
 import { register as registerSerialTools } from './tools/serial.js';
 import { register as registerControlTools } from './tools/control.js';
 import { register as registerDaemonTools } from './tools/daemon.js';
@@ -29,6 +30,8 @@ const VENDOR = path.join(HERE, 'vendor', 'pyserial-3.5');
 const BUNDLED_PROTOCOLS = path.join(HERE, 'protocols');
 
 export const name = 'whalesong';
+// 只声明 tools：webServer 在命令行宿主里可能不存在，硬写进来会让插件起不来。
+// 设置页接口那边用 `ctx.inject(['webServer'], ...)` 等它就绪（没有就永远挂着）。
 export const inject = ['tools'];
 
 const DEFAULT_PYTHON = process.env.DSH_PYTHON || 'python';
@@ -183,4 +186,7 @@ export function apply(ctx, config = {}) {
   registerControlTools(toolCtx);
   registerDaemonTools(toolCtx);
   registerWebTools(toolCtx);
+
+  // 设置页那一个开关的后端入口（没有 webServer 的宿主里自动跳过）。
+  registerPrefsApi(ctx, { runCli });
 }

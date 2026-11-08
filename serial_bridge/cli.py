@@ -25,6 +25,7 @@ import urllib.error
 import urllib.request
 
 from . import io as serial_io
+from . import uiprefs
 from .config import list_scenes, load_scene, read_json
 from .errors import BridgeError
 from .ports import resolve_port, scan_ports
@@ -489,13 +490,14 @@ def cmd_webctl(paths, args):
     scene = (args.scene or "").strip() or _default_scene(paths)
     action = args.action
     if action == "open":
-        # 默认就把浏览器打开：否则用户/AI 只看到一个 URL，不知道网页其实已经在跑了。
-        # 不想要请显式 --no-browser。
+        # 弹不弹浏览器由「显式参数 > 设置页开关 > 默认关」决定，见 uiprefs.resolve_open_browser。
+        # 这里不写死 True：以前就是写死 True，导致说法和实际行为不一致（设置页的开关白设了）。
         return _ok(web_service.open_web(
             paths, scene,
             port=int(args.port or 0),
             mode=args.mode,
-            open_browser=bool(getattr(args, "open_browser", True))))
+            open_browser=uiprefs.resolve_open_browser(
+                paths, getattr(args, "open_browser", None))))
     if action == "close":
         return _ok(web_service.close_web(paths, scene))
     return _ok(web_service.status_web(paths, scene))
@@ -595,7 +597,27 @@ def _coerce(text):
 
 def cmd_web(paths, args):
     from .supervisor import run_web
-    return run_web(paths, args.scene, args.port, args.mode, args.open_browser)
+    return run_web(paths, args.scene, args.port, args.mode,
+                   uiprefs.resolve_open_browser(paths, getattr(args, "open_browser", None)))
+
+
+def cmd_prefs(paths, args):
+    """读/写 UI 偏好（设置页用）。
+
+    不带 --set = 读；带 --set 键=值 = 写（**唯一写入口**，见 uiprefs 的注释）。
+    返回完整的当前值，设置页拿它直接回显，不用再读一次。
+    """
+    sets = getattr(args, "set", None) or []
+    if not sets:
+        return _ok(uiprefs.read_prefs(paths))
+    patch = {}
+    for item in sets:
+        if "=" not in item:
+            raise BridgeError("config", "--set 要写成 键=值，收到：%s" % item,
+                              hint=["例如 --set auto_open_browser=true"])
+        key, value = item.split("=", 1)
+        patch[key.strip()] = _coerce(value.strip())
+    return _ok(uiprefs.write_prefs(paths, patch))
 
 
 # ── 入口 ────────────────────────────────────────────────────────────────────
@@ -639,7 +661,10 @@ def build_parser():
     web.add_argument("--scene", required=True)
     web.add_argument("--port", type=int, default=0)
     web.add_argument("--mode", default="light", choices=["light", "watch"])
-    web.add_argument("--open-browser", action="store_true")
+    web.add_argument("--open-browser", dest="open_browser", action="store_true", default=None,
+                     help="强制打开浏览器（压过设置页的开关）")
+    web.add_argument("--no-browser", dest="open_browser", action="store_false",
+                     help="强制不打开浏览器（压过设置页的开关）")
 
     daemon = sub.add_parser("daemon")
     daemon.add_argument("--scene", required=True)
@@ -656,9 +681,15 @@ def build_parser():
     webctl.add_argument("--port", type=int, default=0, help="0 = 自动挑（8898 起）")
     webctl.add_argument("--mode", default="light", choices=["light", "watch"])
     webctl.add_argument("--open-browser", dest="open_browser", action="store_true",
-                        default=True, help="开了网页就顺便打开浏览器（默认就是开）")
+                        default=None,
+                        help="强制打开浏览器（压过设置页的开关）")
     webctl.add_argument("--no-browser", dest="open_browser", action="store_false",
-                        help="只起服务、不弹浏览器（CI / 远程用）")
+                        help="强制不打开浏览器（压过设置页的开关）")
+
+    # UI 偏好：设置页读写。不带 --set 就是读。
+    prefs = sub.add_parser("prefs")
+    prefs.add_argument("--set", action="append", metavar="KEY=VALUE",
+                       help="写一个偏好项；不带就是读")
 
     return parser
 
@@ -681,6 +712,7 @@ def main(argv=None):
         "web": cmd_web,
         "daemon": cmd_daemon,
         "webctl": cmd_webctl,
+        "prefs": cmd_prefs,
     }[args.action_name]
     try:
         return handler(paths, args)

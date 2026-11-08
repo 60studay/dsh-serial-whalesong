@@ -130,11 +130,21 @@ def _open_browser(url):
         return False
 
 
-def open_web(paths, scene, port=0, mode="light", open_browser=True, wait_s=12.0):
-    """起一个后台网页实例并返回它的 URL。已经在跑就直接返回现有的。"""
+def open_web(paths, scene, port=0, mode="light", open_browser=None, wait_s=12.0):
+    """起一个后台网页实例并返回它的 URL。已经在跑就直接返回现有的。
+
+    `open_browser=None` = 没显式要求 → 听设置页的开关（默认关）。
+    显式 True/False 压过开关，见 uiprefs.resolve_open_browser。
+    """
+    from . import uiprefs
+    if open_browser is None:
+        open_browser = uiprefs.resolve_open_browser(paths, None)
+    open_browser = bool(open_browser)
+
     existing = read_instance(paths, scene)
     if existing:
-        # 已经在跑：如果用户要"看看它"，就把现有页面的浏览器打开，而不是再起一个
+        # 已经在跑：如果用户要"看看它"，就把现有页面的浏览器打开，而不是再起一个。
+        # 注意这里也要守开关——以前复用路径无条件弹窗，"点一次弹一次"就是这么来的。
         if open_browser and existing.get("url"):
             _open_browser(existing["url"])
         return {
@@ -161,8 +171,9 @@ def open_web(paths, scene, port=0, mode="light", open_browser=True, wait_s=12.0)
 
     argv = [sys.executable, "-m", "serial_bridge.cli", "web",
             "--scene", scene, "--port", str(chosen), "--mode", mode]
-    if open_browser:
-        argv.append("--open-browser")
+    # 显式把决定结果传给子进程：子进程自己也会读开关，但两边各读一次万一文件正在改
+    # 就可能不一致。这里一次说定。
+    argv.append("--open-browser" if open_browser else "--no-browser")
     subprocess.Popen(
         argv,
         cwd=parts[0],

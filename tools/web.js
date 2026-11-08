@@ -1,5 +1,6 @@
 /* 鲸歌工具层 · 网页服务（serial_web）。
- * 起/停/查后台网页实例；默认会顺手打开浏览器。
+ * 起/停/查后台网页实例。弹不弹浏览器由三层决定：显式参数 > 设置页开关 > 默认不弹。
+ * 注意：这里**只**决定传哪个 flag；没显式要求时一个都不传，让 Python 去读开关。
  */
 
 import { renderError } from '../helpers/errors.js';
@@ -30,7 +31,10 @@ register({
     },
     openBrowser: {
       type: 'boolean',
-      description: 'Also open the page in the human screen browser. Omit to just return the URL.',
+      description:
+        'Open the page in the human screen browser. Omit to follow the plugin setting ' +
+        '"自动打开网页" (DSH left sidebar → Plugins → 鲸歌串口). That setting is OFF by default, ' +
+        'so omitting usually just returns the URL. true forces a window open; false forbids it.',
     },
   },
   output: {
@@ -74,7 +78,10 @@ register({
     if (scene) argv.push('--scene', scene);
     if (Number.isFinite(args?.port)) argv.push('--port', String(Math.trunc(args.port)));
     if (args?.mode === 'light' || args?.mode === 'watch') argv.push('--mode', args.mode);
+    // 三个分支都要写全：false 和"不传"是两件事。
+    // false → 显式禁止；不传 → 交给 Python 去读设置页的开关（默认关）。
     if (args?.openBrowser === true) argv.push('--open-browser');
+    else if (args?.openBrowser === false) argv.push('--no-browser');
     const data = await runCli(argv);
 
     const result = { action, running: Boolean(data.running) };
