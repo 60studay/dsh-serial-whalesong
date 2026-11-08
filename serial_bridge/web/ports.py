@@ -67,6 +67,8 @@ class PortMixin(object):
             resolved = self.current_device()
             self.state.update(port=resolved["device"],
                               baud=int(self.effective_cfg().get("baud") or 0))
+        # 切口那一刻就对齐控制权（对面 23:35 的绕过口子）
+        self._align_control_on_port()
         return {"ok": True,
                 "port": self.current_device()["device"],
                 "baud": self.effective_cfg().get("baud"),
@@ -74,6 +76,26 @@ class PortMixin(object):
                 "override_com": self.override_com,
                 "override_baud": self.override_baud}
 
+
+    def _align_control_on_port(self):
+        """切到一个口之后，按**该口上最严格的控制权**对齐（paused > human > ai）。
+
+        不做轮询：只在"切过去"这一下对齐，其它场景靠 `_sync_same_port` 跟随。
+        """
+        try:
+            device = self.current_device()["device"]
+        except BridgeError:
+            return
+        try:
+            strict = self.state.strictest_state_for_port(device)
+            if not strict:
+                return
+            current = self.state.read().get("state")
+            if current != strict:
+                self.state.force_state(strict, "port-align",
+                                       "切口对齐：%s 上最严格的控制权是 %s" % (device, strict))
+        except Exception:
+            pass                      # 对齐失败不影响"切口"本身
 
     def auto_port(self):
         """「回到自动识别」：丢掉手动选的口，回到 config 的匹配规则（+ 猜）。

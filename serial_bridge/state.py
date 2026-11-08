@@ -204,6 +204,46 @@ class SharedState(object):
         finally:
             self._release()
 
+    # 严格程度：paused（AI 被叫停）> human（人在控）> ai（交给 AI）
+    STRICT_ORDER = {"ai": 0, "human": 1, "paused": 2}
+
+    def strictest_state_for_port(self, device):
+        """读**同一个物理口**上其它场景的控制权，返回最严格的那个。
+
+        为什么需要（对面 23:35 抓到的绕过口子）：
+            A 在 COM10 上 human → 同口所有场景变 human
+            把 B 从 COM7 切到 COM10 → B 仍保留它自己的 ai
+            AI 走 B 发命令 → 看到 ai → 放行 ⇒ 人的接管被绕过去了
+        所以"切口那一刻"就要对齐：切过去时读新口上已有的控制权，取最严格者。
+        """
+        device = str(device or "").strip()
+        if not device:
+            return None
+        best = None
+        best_rank = -1
+        try:
+            names = sorted(os.listdir(self.dir))
+        except OSError:
+            return None
+        for name in names:
+            if not name.endswith(".json") or name.endswith(".web.json"):
+                continue
+            path = os.path.join(self.dir, name)
+            if os.path.abspath(path) == os.path.abspath(self.path):
+                continue
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    data = json.load(handle)
+            except (OSError, ValueError):
+                continue
+            if str(data.get("port") or "").strip() != device:
+                continue
+            state = data.get("state")
+            rank = self.STRICT_ORDER.get(state, -1)
+            if rank > best_rank:
+                best_rank, best = rank, state
+        return best
+
     def _sync_same_port(self, current):
         """把控制权同步给**同一个物理口号**的其它场景。
 
