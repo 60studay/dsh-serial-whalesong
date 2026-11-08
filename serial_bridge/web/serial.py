@@ -46,7 +46,7 @@ class SerialMixin(object):
                 time.sleep(0.01)
         return out
 
-    def send(self, text, mode="text", actor="human", source="web"):
+    def send(self, text, mode="text", actor="human", source="web", from_page=False):
         """发一条命令。
 
         source 表示"谁发的"：web(页面按钮) / ai(插件 serial_send 转发过来)。
@@ -113,8 +113,9 @@ class SerialMixin(object):
                 # **两处都要标**：self 是 WebServer（自己的逻辑用），loop 是读线程真正读的那个。
                 self._manual_until = time.time() + 2.0
                 self.loop._manual_until = self._manual_until
-                if source != "web":
-                    self.loop._push_frame(command, "", "", 0, source)
+                if source != "web" or not from_page:
+                    self.loop._push_frame(command, "", "", 0,
+                                          source if source != "web" else "external")
                 if self.mode == "watch":
                     return {"ok": True, "accepted": True, "mode": self.mode}
                 # 轻模式（定时占口）也要**同步拿回显**：只回 accepted 会让调用方按
@@ -161,9 +162,11 @@ class SerialMixin(object):
         # Bug 7：手动发的回显也要跑判定，否则"设备回了 FAULT 但 alerts 是空的"
         self._maybe_check(result["rx_text"], "manual", result.get("rx_bytes"))
         # AI 发起的命令记一帧，网页才看得到（Bug 8）
-        if source != "web":
+        if source != "web" or not from_page:
             self.loop._push_frame(command, result["rx_text"], result["rx_hex"],
-                                  result["bytes"], source)
+                                  result["bytes"],
+                                  source if source != "web" else
+                                  ("web" if from_page else "external"))
         return {
             "ok": True,
             "accepted": True,

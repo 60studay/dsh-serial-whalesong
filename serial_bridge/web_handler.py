@@ -167,6 +167,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     str(body.get("mode") or "text"),
                     str(body.get("actor") or "human"),
                     str(body.get("source") or "web"),
+                    # 页面自己发的带 client=page；别的调用方（脚本/另一个智能体/curl）
+                    # 不带 → 这条会在页面上留一行「外部」，看得见谁动过手
+                    from_page=(str(body.get("client") or "") == "page"),
                 ))
             if path == "/control":
                 # 缺字段/未知动作都用 400，但必须说清楚是哪一种

@@ -137,6 +137,8 @@ var lastChoicePrompt = '';
     timer: ['auto', '定时'],
     watch: ['auto', '定时'],
     rule: ['rule', '规则'],
+    external: ['bad', '外部'],
+    cli: ['bad', '外部'],
     dev: ['dev', '设备']
   };
 
@@ -479,7 +481,8 @@ var lastChoicePrompt = '';
     autoGrow();
     // 先发，成功了才把这条命令打到回显区。
     // 否则被拒绝（控制权/被占用/格式错）时界面也显示成"发过了"，看起来像成功了（Bug 9b）。
-    post('/send', { text: text, mode: dispMode, actor: 'human' }).then(function (data) {
+    post('/send', {
+    client: 'page', text: text, mode: dispMode, actor: 'human' }).then(function (data) {
       if (!data.ok) {
         pushEvent('bad', '发送失败：' + errLine(data.error));
         return;
