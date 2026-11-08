@@ -70,6 +70,10 @@ class StatusMixin(object):
             "state_path": self.state.path,
             # 失效标签自救时探测哪些端口（1.27：原来写死在前端，属于"这台机器的环境知识"）
             "probe_ports": self.probe_ports(),
+            # 解析不出串口时，把"现在插着哪些"和"需要人选一个"直接告诉前端 ——
+            # 让页面**问人**，而不是悄悄锁在一个打不开的口上（用户 22:5x）。
+            "port_choices": self.port_choices(),
+            "needs_port_choice": self.needs_port_choice(),
         }
         try:
             resolved = self.current_device()
@@ -222,3 +226,19 @@ class StatusMixin(object):
             if 1 <= value <= 65535:
                 ports.append(value)
         return ports or list(self.DEFAULT_PROBE_PORTS)
+
+
+    def port_choices(self):
+        """现在插着的串口（给"请选一个"的提示用）。"""
+        try:
+            return sorted(item["device"] for item in scan_ports())
+        except Exception:
+            return []
+
+    def needs_port_choice(self):
+        """当前没有可用串口、但机器上插着不止一个 → 该问人，而不是替用户猜。"""
+        try:
+            self.current_device()
+            return False
+        except BridgeError:
+            return len(self.port_choices()) > 1

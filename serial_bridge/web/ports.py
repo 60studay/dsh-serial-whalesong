@@ -35,6 +35,21 @@ class PortMixin(object):
 
 
     def reconnect(self, com, baud):
+        # 选的口号**现在不存在**就不记（用户 22:5x："选不出来的问题不该锁死，要问人"）。
+        # 以前这里先写 override 再回头看能不能解析 —— 写进去就"记住"了，用户只看到
+        # "串口未解析出来"，根本不知道自己被锁在哪个口上。
+        if com:
+            try:
+                available = [item["device"] for item in scan_ports()]
+            except Exception:
+                available = []
+            if available and com not in available:
+                return {"ok": False,
+                        "error": {"kind": "port_missing",
+                                  "message": "现在找不到 %s。" % com,
+                                  "hint": ["当前插着：%s" % "、".join(sorted(available)),
+                                           "从下拉框里挑一个（或点「AI 自动选择」让程序按规则找）"]},
+                        "candidates": sorted(available)}
         if com or baud:
             self._apply_override(com or self.override_com,
                                  baud or self.override_baud)

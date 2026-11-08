@@ -23,6 +23,7 @@ import { initTips } from './js/tips.js';
   var pageDead = false;
   var pollTimer = null;
   var lastAlertsRaw = [];
+var lastChoicePrompt = '';
 
   /* ── 告警条关闭状态（刷新后仍然生效）── */
   var ALERT_DISMISS_KEY = 'sb.alertDismissedTs';
@@ -361,6 +362,15 @@ import { initTips } from './js/tips.js';
     lastState = data;
     curPort = data.port || '';
     setProbePorts(data.probe_ports);      // 1.27：探测表由后端给，前端不再写死
+
+    // 解析不出串口、但机器上插着好几个 → **问人**，不要自己猜（用户 22:5x 定的方向）。
+    // 只在"需要选择"这件事发生变化时说一次，不然每 700ms 刷一条。
+    if (data.needs_port_choice && !lastChoicePrompt) {
+      lastChoicePrompt = (data.port_choices || []).join('、');
+      pushEvent('warn', '请选一个串口：' + lastChoicePrompt + '（同型号分不清，需要你定）');
+    } else if (!data.needs_port_choice) {
+      lastChoicePrompt = '';
+    }
     setPageTitle();
   }
 
