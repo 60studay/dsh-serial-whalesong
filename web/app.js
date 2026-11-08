@@ -3,9 +3,11 @@ import { autoGrow } from '../js/layout.js';
 import { loadRules, onRulesSaved } from './js/rules.js';
 import { pollChannel } from './js/channel.js';
 // 1.19 拆出去的两块（原来都在这个文件里，各 115 / 136 行）
-import { startViewerHeartbeat } from './js/viewer.js';
+import { startViewerHeartbeat, setProbePorts } from './js/viewer.js';
 import { initPortPicker } from './js/pickport.js';
 import { initTheme } from './js/theme.js';
+import { initSidebar } from './js/sidebar.js';
+import { initTips } from './js/tips.js';
 
 /* 鲸歌网页逻辑 · 收发区 + 规则 + 启动（R2b 第一步之后剩下的部分）。
  * 基础设施在 js/core.js、配色和拖动在 js/layout.js，这里靠 import 用它们。
@@ -356,6 +358,7 @@ import { initTheme } from './js/theme.js';
 
     lastState = data;
     curPort = data.port || '';
+    setProbePorts(data.probe_ports);      // 1.27：探测表由后端给，前端不再写死
     setPageTitle();
   }
 
@@ -524,139 +527,23 @@ import { initTheme } from './js/theme.js';
     }
   });
 
-  document.querySelectorAll('#controlbar button').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      post('/control', { action: btn.dataset.action }).then(function (data) {
-        // 控制权变化本身由 renderStatus → 轨道统一显示，这里不再往数据区写
-        if (!data.ok) { pushEvent('bad', errLine(data.error)); return; }
-        if (data.note) pushEvent('', data.note);
-        if (data.port_action === 'released') {
-          pushEvent('', '已释放串口，可以打开串口助手了');
-        } else if (data.port_action === 'acquired') {
-          pushEvent('', '已重新占用串口（监视模式）');
-        } else if (typeof data.port_action === 'string' && data.port_action.indexOf('failed') === 0) {
-          pushEvent('bad', '串口未能重新占用：' + data.port_action);
-        }
-        tick();
-      });
-    });
-  });
-
-  document.querySelectorAll('input[name=disp]').forEach(function (r) {
-    r.addEventListener('change', function () {
-      dispMode = r.value;
-      $('cmd').placeholder = dispMode === 'hex'
-        ? '十六进制，如 AA 55 01 00，回车发送'
-        : '输入指令后回车发送';
-    });
-  });
-
-  document.querySelectorAll('input[name=wmode]').forEach(function (r) {
-    r.addEventListener('change', function () {
-      post('/mode', { mode: r.value }).then(function (data) {
-        if (!data.ok) { pushEvent('bad', errLine(data.error)); return; }
-        pushEvent('', '已切到' + (data.mode === 'watch' ? '监视模式（占口）' : '轻模式（不占口）'));
-        tick();
-      });
-    });
-  });
-
-  function pushWatch() {
-    post('/watch', {
-      send_enabled: $('sendEnabled').checked,
-      check_enabled: $('checkEnabled').checked,
-      check_source: $('checkSource').value,
-      command: $('watchCommand').value,
-      interval_ms: parseInt($('watchInterval').value, 10) || 1000
-    }).then(function (data) {
-      if (!data.ok) pushEvent('bad', errLine(data.error));
-      else tick();
-    });
-  }
-  ['sendEnabled', 'checkEnabled'].forEach(function (id) {
-    $(id).addEventListener('change', pushWatch);
-  });
-  $('checkSource').addEventListener('change', pushWatch);
-  $('watchCommand').addEventListener('change', pushWatch);
-  $('watchInterval').addEventListener('change', pushWatch);
-
-  /* ── 角标（1.23）：触屏没有 hover，所以点一下也要能展开 ──
-     规则：点角标 = 开/关；点别处 = 收起；Esc = 收起。
-     气泡是绝对定位的，展开时不挤邻居（撑开布局是最容易做错的地方）。 */
-
-  // 先把"解释性的一行长文字"批量收成角标（1.23 的推广，见 index.html 的 data-tipify）。
-  // 为什么在 JS 里搬而不是直接写死 data-tip：HTML 里留着原文，改文案时不用两头对照。
-  // 角标会挂到最近的标题后面（"显示模式 ⓘ"），而不是自己占一整行。
-  document.querySelectorAll('[data-tipify]').forEach(function (el) {
-    var text = (el.textContent || '').trim();
-    if (!text) { el.remove(); return; }
-    el.setAttribute('data-tip', text);
-    el.setAttribute('aria-label', text);
-    el.classList.remove('hint');
-    el.classList.add('tip');
-    el.textContent = '';
-    el.tabIndex = 0;
-    var host = el.closest('.field');
-    // 只把**字段级**的说明挪到标签后面（"显示模式 ⓘ"）。
-    // 小组级的说明就地留成一个 ⓘ，否则它们会全挤到同一个标题后面（试过，一排三个角标，很难看）。
-    var label = host ? host.querySelector(':scope > span, :scope > .title') : null;
-    if (label) {
-      label.appendChild(document.createTextNode(' '));
-      label.appendChild(el);
-    }
-  });
-
-  document.addEventListener('click', function (ev) {
-    document.querySelectorAll('.tip.open').forEach(function (tip) {
-      if (!tip.contains(ev.target)) tip.classList.remove('open');
-    });
-  });
-  document.querySelectorAll('.tip').forEach(function (tip) {
-    tip.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      tip.classList.toggle('open');
-    });
-    tip.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') tip.classList.remove('open');
-    });
-  });
-
   /* ── 选口那组动作（1.19 移进 js/pickport.js）──────────────
      那边只负责"点按钮之后发什么请求"；刷新下拉框和跑轮询留在这里，
      因为它们要读 lastState —— 那是本文件的状态，不该跨文件去拿。 */
+  // 侧栏控件 / 角标：都在 js/ 里（1.26 拆的）
+  initTips();
+  initSidebar({
+    getRunning: function () { return !!(lastState && lastState.watch_running); },
+    onDispMode: function (mode) { dispMode = mode; },
+    tick: tick,
+    stopPolling: function () { if (pollTimer) clearInterval(pollTimer); }
+  });
+
   initPortPicker({
     onPicked: function (port) { preferredPort = port; },
     onProbe: function (result) { probeResult = result; },
     refreshPorts: refreshPorts,
     tick: tick
-  });
-
-  /* ── 暂停 / 恢复 与 彻底退出 分开 ─────────────────────── */
-  $('btnPausePort').addEventListener('click', function () {
-    var running = !!(lastState && lastState.watch_running);
-    var path = running ? '/port/pause' : '/port/resume';
-    post(path, {}).then(function (data) {
-      if (!data.ok) { pushEvent('bad', errLine(data.error)); return; }
-      if (running) {
-        pushEvent('', '已暂停并释放串口（网页仍可用）');
-      } else if (data.acquired) {
-        pushEvent('', '已重新占用串口');
-      } else {
-        pushEvent('', '未占用串口：控制权不在 AI 或当前是轻模式');
-      }
-      tick();
-    });
-  });
-
-  $('btnExit').addEventListener('click', function () {    if (!confirm('彻底退出？网页将关闭，串口会释放。\n（只想临时把串口让给别的程序，请用「暂停并释放串口」）')) return;
-    post('/shutdown', {}).then(function () {
-      document.body.innerHTML =
-        '<div style="padding:40px;font:16px/1.8 Consolas,monospace;color:#d4d4d4">' +
-        '<h2 style="color:#3fb950">鲸歌已退出</h2>' +
-        '<p>HTTP 服务已停止，串口已释放。可以关闭这个标签页。</p>' +
-        '<p style="color:#8a8a8a">需要时重新运行：python bridge.py web --scene &lt;场景&gt;</p></div>';
-      if (pollTimer) clearInterval(pollTimer);
-    });
   });
 
   /* ── 启动 ─────────────────────────────────────────────── */
