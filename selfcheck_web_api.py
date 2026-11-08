@@ -45,6 +45,10 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+from _webapi_http import (as_json, err_kind, http_get, http_post,  # noqa: E402
+                          wait_ready)
+
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
@@ -77,59 +81,6 @@ def skip(name, reason=""):
 
 
 # ── HTTP 小工具 ──────────────────────────────────────────────────────────────
-
-def http_get(base, path, timeout=8):
-    """返回 (status, body_text)。连接失败时 status=None。"""
-    try:
-        req = urllib.request.Request(base + path)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode("utf-8", "replace")
-    except Exception as exc:
-        return None, str(exc)
-
-
-def http_post(base, path, payload=None, timeout=15):
-    try:
-        data = json.dumps(payload or {}).encode("utf-8")
-        req = urllib.request.Request(
-            base + path, data=data,
-            headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode("utf-8", "replace")
-    except Exception as exc:
-        return None, str(exc)
-
-
-def as_json(text):
-    """尽力解析 JSON。解析不了返回 None —— 这就说明接口返回的不是 JSON。"""
-    try:
-        return json.loads(text)
-    except Exception:
-        return None
-
-
-def err_kind(data):
-    error = (data or {}).get("error") or {}
-    if isinstance(error, dict):
-        return error.get("kind") or ""
-    return ""
-
-
-def wait_ready(base, seconds=20.0):
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        status, text = http_get(base, "/status", timeout=1.5)
-        if status == 200 and as_json(text):
-            return True
-        time.sleep(0.25)
-    return False
-
-
-# ── 主流程 ──────────────────────────────────────────────────────────────────
 
 def main():
     from serial_bridge.cli import _paths

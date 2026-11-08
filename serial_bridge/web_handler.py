@@ -64,7 +64,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 html = self.ctx["page"]
                 return self._send(200, html, "text/html; charset=utf-8")
-            if path in ("/app.css", "/app.js", "/brand.png") or (
+            if path in ("/app.css", "/app.js", "/brand.png", "/custom.css") or (
                     path.startswith("/js/") and path.endswith(".js")) or (
                     path.startswith("/fonts/") and path.endswith(".woff2")):
                 # R2/R2b 把样式和逻辑拆成了独立文件，必须真的能把它们发出去，
@@ -77,6 +77,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 return self._send(200, body, content_type)
             if path == "/status":
                 return self._json(self.ctx["status"]())
+            # 外观（2.2）：背景图 / 不透明度 / 主色。运行期状态，存在 .runtime/ui-theme.json
+            if path == "/theme":
+                return self._json({"ok": True, "theme": self.ctx["get_theme"]()})
             # 看客心跳：网页每 5 秒 ping 一次，关窗口时补一个 /bye。
             # /viewer 只读，**不刷新时间戳**（否则 open_web 一问就变成"有人看着"）。
             if path == "/ping":
@@ -149,6 +152,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 return self._json(self.ctx["control"](action, str(body.get("actor") or "human")))
             if path == "/watch":
                 return self._json(self.ctx["set_watch"](body))
+            if path == "/theme":
+                return self._json(self.ctx["set_theme"](body))
             if path == "/ping":
                 return self._json(self.ctx["ping"]())
             if path == "/bye":

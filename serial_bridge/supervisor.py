@@ -369,6 +369,15 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         # 记住启动时的控制权，避免看门狗第一次跑就误判成"状态变化"
         self.ports._last_control = self.state.read().get("state")
 
+        def get_theme():
+            # 外观（2.2）：背景图 / 不透明度 / 主色。读失败回默认值，不影响开网页。
+            from . import theme as theme_mod
+            return theme_mod.read_theme(self.paths)
+
+        def set_theme(body):
+            from . import theme as theme_mod
+            return {"ok": True, "theme": theme_mod.write_theme(self.paths, body)}
+
         handler = type("BoundHandler", (BridgeHandler,), {})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
         self.httpd.daemon_threads = True
@@ -378,6 +387,8 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             "page": self._page,
             "asset": _load_asset,
             "status": self.status,
+            "get_theme": get_theme,
+            "set_theme": set_theme,
             "ping": self.viewer_ping,
             "bye": self.viewer_bye,
             "viewer": self.viewer_state,

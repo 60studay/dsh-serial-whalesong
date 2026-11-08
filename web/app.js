@@ -5,6 +5,7 @@ import { pollChannel } from './js/channel.js';
 // 1.19 拆出去的两块（原来都在这个文件里，各 115 / 136 行）
 import { startViewerHeartbeat } from './js/viewer.js';
 import { initPortPicker } from './js/pickport.js';
+import { initTheme } from './js/theme.js';
 
 /* 鲸歌网页逻辑 · 收发区 + 规则 + 启动（R2b 第一步之后剩下的部分）。
  * 基础设施在 js/core.js、配色和拖动在 js/layout.js，这里靠 import 用它们。
@@ -681,6 +682,7 @@ import { initPortPicker } from './js/pickport.js';
     tick();
     startPolling();
     startViewerHeartbeat({ onDead: markPageDead });
+    initTheme();
     startChannel();
   }).catch(function () {
     onRulesSaved(tick);
@@ -688,5 +690,6 @@ import { initPortPicker } from './js/pickport.js';
     tick();
     startPolling();
     startViewerHeartbeat({ onDead: markPageDead });
+    initTheme();
     startChannel();
   });

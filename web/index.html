@@ -203,6 +203,30 @@
       <div class="hint" data-tipify>白名单为空 = 禁止一切自动命令。</div>
     </div>
 
+    <!-- 外观（2.2）：三项都只是**变量**，不动任何规则/CSS 结构。
+         背景图只挂在 body::before 那一层，页头/侧栏是不透明的 —— logo 任何时候都清楚。 -->
+    <div class="group">
+      <span class="title">外观</span>
+      <div class="hint" data-tipify>只改这一台的样子，存在运行期状态里（不进 config、不进仓库）；「恢复默认」一键回原样。</div>
+      <div class="field">
+        <span>背景图地址</span>
+        <input type="text" id="themeBg" placeholder="https://…（留空 = 不铺背景）">
+      </div>
+      <div class="field">
+        <span>背景不透明度</span>
+        <input type="range" id="themeAlpha" min="0" max="100" step="5" value="100">
+      </div>
+      <div class="field">
+        <span>主色</span>
+        <div class="row">
+          <input type="color" id="themeAccent" value="#0e639c" style="flex:0 0 44px">
+          <button class="ghost" id="btnThemeSave" style="flex:1">应用</button>
+        </div>
+      </div>
+      <button class="ghost tiny" id="btnThemeReset">恢复默认</button>
+      <div class="hint" id="themeNote"></div>
+    </div>
+
     <div class="divider"></div>
     <button class="ghost" id="btnPausePort">暂停并释放串口</button>
     <div class="hint" id="pauseHint">网页仍可用，只是把串口让给串口助手。</div>

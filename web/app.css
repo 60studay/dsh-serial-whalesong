@@ -107,6 +107,24 @@
     font-family: var(--font-ui); font-size: 14px; line-height: 1.5;
     display: flex; flex-direction: column;
   }
+  /* ── 背景图层（2.2）──────────────────────────────────────
+     三条硬约束（用户 17:0x 定的）：
+       ① 背景图只挂在这**一层**，z-index 低于内容 —— 绝不写到 body 上再指望页头盖住它
+       ② 页头/侧栏自带不透明底色，背景图与透明度**不作用于它们**（logo 永远清楚）
+       ③ pointer-events: none，绝不挡住点击 */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1;
+    background-image: var(--bg-image); background-size: cover;
+    background-position: center; background-repeat: no-repeat;
+    opacity: var(--bg-alpha); pointer-events: none;
+  }
+  /* 底色挪到 html 上、body 透明：这样背景图正好夹在"底色"和"内容"之间。
+     面板（收发区/侧栏/弹窗）本来就有不透明底色，天然盖住背景图 —— 不用逐个加 z-index。 */
+  html { background: var(--bg); }
+  body { background: transparent; }
+  #console { background: var(--panel); }
+  aside { background: var(--bg); }
+  header { background: var(--bg); }
   header {
     display: flex; align-items: center; gap: 12px;
     padding: 10px 14px; border-bottom: 1px solid var(--line);
