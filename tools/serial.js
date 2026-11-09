@@ -171,6 +171,12 @@ register({
       description:
         'The command text without line ending; the scene config appends its own (default CRLF).',
     },
+    autoBaud: {
+      type: 'boolean',
+      description:
+        'Try every common baud rate and use the first one that answers (returns `baud` + evidence). ' +
+        'Use it with an unknown module instead of calling this tool 5 times with different `baud`.',
+    },
     hold: {
       type: 'boolean',
       description:
@@ -204,6 +210,7 @@ register({
         empty: { type: 'boolean' },
         warning: { type: 'string', description: 'Present when the device stayed silent.' },
         submitted: { type: 'boolean', description: 'True when wait=false: the bytes are out, the reply was not waited for.' },
+        baud: { type: 'integer', description: 'Baud rate that answered (autoBaud=true).' },
         sessionSeq: { type: 'integer', description: 'Which command this was inside the held session (hold=true).' },
         submitMs: { type: 'integer', description: 'Time until the bytes were on the wire.' },
       },
@@ -239,6 +246,7 @@ register({
     if (scene) argv.push('--scene', scene);
     if (com) argv.push('--com', com);
     if (baud) argv.push('--baud', String(baud));
+    if (args?.autoBaud === true) argv.push('--auto-baud');
     if (args?.hold === true) argv.push('--hold');
     if (!wait) argv.push('--no-wait');
     const data = await runCli(argv);
@@ -255,6 +263,8 @@ register({
       ...(data.submitted ? { submitted: true } : {}),
       ...(Number.isFinite(data.submit_ms) ? { submitMs: data.submit_ms } : {}),
       ...(Number.isFinite(data.session_seq) ? { sessionSeq: data.session_seq } : {}),
+      ...(data.baud ? { baud: Number(data.baud) } : {}),
+      ...(Array.isArray(data.tried) ? { baudTried: data.tried } : {}),
       ...(data.warning ? { warning: data.warning } : {}),
     };
   },

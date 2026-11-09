@@ -282,6 +282,24 @@ class SharedState(object):
         new_state = current.get("state")
         changed_by = current.get("changed_by") or "unknown"
         until = current.get("control_until")
+        # 1.46：永久接管改写成临时接管 = 降级；同口同步时也不许这么做
+        if changed_by == "human-command" and new_state == STATE_HUMAN:
+            for name in sorted(os.listdir(self.dir)) if os.path.isdir(self.dir) else []:
+                if not name.endswith(".json") or name.endswith(".web.json"):
+                    continue
+                path = os.path.join(self.dir, name)
+                if os.path.abspath(path) == os.path.abspath(self.path):
+                    continue
+                try:
+                    with open(path, encoding="utf-8") as handle:
+                        other = json.load(handle)
+                except (OSError, ValueError):
+                    continue
+                if (other.get("state") == STATE_HUMAN
+                        and other.get("changed_by") == "human-explicit"
+                        and str(other.get("port") or "").strip() == device):
+                    # 同口有"永久接管"的场景 → 本次不覆盖它的 until，直接把 until 抬成 None
+                    until = None
         note = current.get("note") or ""
         try:
             names = sorted(os.listdir(self.dir))
@@ -415,6 +433,11 @@ class SharedState(object):
         current = self.read()
         if current.get("state") == STATE_PAUSED:
             return current                      # 暂停是明确意图，不受计时影响
+        # 1.46：点了「人类接管」是**永久**，发命令不能把它降级成 10 秒倒计时
+        # （用户实测："我都切回人类常驻模式了，发消息却进入了倒计时模式。"）
+        if (current.get("state") == STATE_HUMAN
+                and current.get("changed_by") == "human-explicit"):
+            return current
         seconds = DEFAULT_HUMAN_HOLD_S if hold_s is None else float(hold_s)
         return self.force_state(
             STATE_HUMAN, "human-command",
@@ -447,15 +470,10 @@ class SharedState(object):
             return False
         if _now() < until:
             return False
+        # 到期回落是**常规行为**（像门禁自动落锁），不是故障：
+        # 只改状态 + 一句中性 note，**不写告警列表**（那会在页面顶部弹红条）。
         self.force_state(STATE_AI, "human-expired",
-                         "人类接管已到期（%d 秒），控制权回到 AI" % int(DEFAULT_HUMAN_HOLD_S))
-        try:
-            self.append_alert({
-                "rule": "控制权到期",
-                "blame": "人类接管已到期，控制权自动回到 AI",
-            })
-        except Exception:
-            pass
+                         "人接管已到期 → AI")
         return True
 
     # ── 告警 ────────────────────────────────────────────────────────────────

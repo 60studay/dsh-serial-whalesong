@@ -144,8 +144,21 @@ class PortManager(object):
                     "detail": "轻模式不碰串口（探测会拉 DTR/RTS，可能复位板子）；"
                               "点「检测占用」可以主动试一次"}
 
+        # 1.47：**刚有人用过这个口就别探测**。
+        # 现象：用户说"明明没有 AI 在跑，我输入却报串口被占用"——是我们自己的探测
+        # （每 5 秒真 open 一次）和他的发送撞在同一瞬间。
+        # 状态文件的 mtime 就是"最近一次收发"的可靠代理（每次发送都会 update）。
+        try:
+            import os as _os
+            age = now - _os.path.getmtime(self.state.path)
+        except OSError:
+            age = 999.0
+        if age < 3.0:
+            return {"owner": "unknown", "device": device,
+                    "detail": "%.0f 秒前刚有人用过这个口，先不探测（避免抢口）" % age}
+
         cached = self._port_owner_cache.get("value")
-        if cached is not None and (now - self._port_owner_cache.get("at", 0)) < 5.0:
+        if cached is not None and (now - self._port_owner_cache.get("at", 0)) < 15.0:
             return cached
         if not device:
             value = {"owner": "unknown", "device": "", "detail": "串口未解析出来"}

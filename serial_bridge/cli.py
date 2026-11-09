@@ -324,6 +324,60 @@ def cmd_send(paths, args):
                       "白名单为空时禁止一切自动命令"],
             )
 
+    # 0a 级：自动波特率（1.48）。对 HC-05 这类模块，扫档位是调试的第一步；
+    # 让 AI 自己调 5 次不如一次调用返回"哪档有回应 + 回了什么"。
+    if bool(getattr(args, "auto_baud", False)):
+        resolved_device_for_baud = ""
+        try:
+            resolved_device_for_baud = resolve_port(cfg)["device"]
+        except BridgeError:
+            raise
+        from .ports import BAUD_CHOICES
+        from .io import transact as _transact
+        tried, hit = [], None
+        for baud in BAUD_CHOICES:
+            cfg_try = dict(cfg)
+            cfg_try["baud"] = int(baud)
+            cfg_try["wait_first_byte_ms"] = 400
+            cfg_try["timeout_read_ms"] = 200
+            # 每个档位最多试两次：
+            #   ① 打开串口会拉 DTR（多数板子=复位），板子还没起来时第一条会丢；
+            #   ② 低档位的乱码可能让设备先回一句 "ERR CMD" —— 那不是"命中了"，
+            #      不能拿 ERR 当证据（否则会对一个错误的档位报命中）。
+            got = ""
+            result = None
+            for attempt in (1, 2):
+                try:
+                    result = _transact(cfg_try, resolved_device_for_baud, args.command)
+                except BridgeError as exc:
+                    if attempt == 2:
+                        tried.append({"baud": baud, "kind": exc.kind})
+                    result = None
+                    continue
+                got = (result.get("rx_text") or "").strip()
+                if got and not got.upper().startswith("ERR"):
+                    break
+                got = ""
+                time.sleep(0.2)
+            if got:
+                hit = {"baud": baud, "response": got,
+                       "rx_hex": (result or {}).get("rx_hex") or ""}
+                break
+            tried.append({"baud": baud, "kind": "no_valid_response"})
+        if not hit:
+            raise BridgeError("no_response", "所有波特率都没有回应：%s"
+                              % ", ".join(str(item["baud"]) for item in tried),
+                              hint=["确认设备已上电、TX/RX 没接反",
+                                    "有些模块要求先按 KEY 进 AT 模式"])
+        return _ok({
+            "scene": scene.name, "command": args.command,
+            "port": resolved_device_for_baud, "port_source": "auto-baud",
+            "baud": hit["baud"], "response": hit["response"],
+            "response_hex": hit["rx_hex"], "bytes": len(hit["response"]),
+            "empty": False, "tried": tried,
+            "note": "自动波特率：%d 有回应（试了 %d 档）" % (hit["baud"], len(tried)),
+        })
+
     # 0 级：要求"保持会话"（1.38）→ 交给会话进程。控制权检查在上面已经做过，
     #    会话不会绕过它（human/paused 到不了这里）。
     if bool(getattr(args, "hold", False)):
@@ -547,6 +601,8 @@ def build_parser():
     send.add_argument("--command", required=True)
     send.add_argument("--as", dest="actor", default="human", choices=["human", "ai"])
     send.add_argument("--auto", action="store_true", help="按自动命令处理，强制白名单检查")
+    send.add_argument("--auto-baud", action="store_true",
+                      help="依次试 BAUD_CHOICES，用第一条有回显的档位发这条命令")
     send.add_argument("--hold", action="store_true",
                       help="保持串口打开，供后续调用复用（会话）；空闲 60 秒自动释放")
     send.add_argument("--idle", type=float, default=60.0, help="会话空闲多少秒释放（默认 60）")
