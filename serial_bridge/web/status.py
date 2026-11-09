@@ -144,6 +144,15 @@ class StatusMixin(object):
             self._daemon_cache = (0, None)      # 管家掉线：回退到本地逻辑
 
         if since is not None:
+            # 1.57：`since=-1` = **只从现在开始**。页面首屏用它，避免把整圈历史
+            # （别的会话留下的旧帧）当成"刚发生"的东西画出来。
+            if float(since) < 0:
+                now_cursor = max([float(f.get("ts") or 0)
+                                  for f in self.loop.read_frames(0)] or [0.0])
+                return self._finish_poll({
+                    "ok": True, "frames": [], "cursor": now_cursor,
+                    "rx_text": "", "rx_hex": "", "bytes": 0,
+                }, force)
             # 游标模式：不消费，谁轮询都不影响别人
             frames = self.loop.read_frames(since)
             # 「读一次」也走游标模式（页面统一带 since），所以这里要额外保护：

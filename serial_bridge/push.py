@@ -66,22 +66,28 @@ def _post(url, tx, rx, source, timeout=2.0):
 
 
 def push_frame(paths, scene_name="", tx="", rx="", source="external"):
-    """投一帧给"用户正在看的页面"。返回投给了哪个 url（没投出去返回空串）。"""
+    """把一帧**广播**给所有活着的页面实例，返回投成功的 url 列表。
+
+    1.57：以前只投"最近活跃"的那一个（按 .web.json 的 mtime 猜），
+    用户开着的可能是另一个实例 → 永远收不到，表现就是"页面不更新"。
+    现在全部投一遍；单个失败不影响其它，也不抛异常。
+    """
     pages = _live_pages(paths)
     if not pages:
-        return ""
+        return []
     ordered = []
     if scene_name:
         ordered += [p for p in pages if p["scene"] == scene_name]
     ordered += [p for p in pages if not scene_name or p["scene"] != scene_name]
+    delivered = []
     for page in ordered:
         try:
             result = _post(page["url"], tx, rx, source)
             if result.get("ok"):
-                return page["url"]
+                delivered.append(page["url"])
         except Exception:
             continue
-    return ""
+    return delivered
 
 
 def push_source(actor):

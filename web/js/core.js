@@ -5,8 +5,11 @@
 export var $ = function (id) { return document.getElementById(id); };
 
 /* ── 状态轨道：系统事件与串口数据分开 ─────────────────── */
-export function nowText() {
-  var d = new Date();
+export function nowText(tsSeconds) {
+  // 1.57：带上帧自己的时间戳。以前永远用"渲染时刻"，于是回放的老帧全被盖成"刚才"。
+  var d = typeof tsSeconds === 'number' && tsSeconds > 0
+    ? new Date(tsSeconds * 1000)
+    : new Date();
   function p(n) { return (n < 10 ? '0' : '') + n; }
   return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }

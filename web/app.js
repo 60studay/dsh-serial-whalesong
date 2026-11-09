@@ -65,7 +65,7 @@ var countdownTimer = null;
    *  不会每段回显都刷一个时间。
    *  顺序是 徽章 → 正文 → 时间：时间放最右边，不切碎"谁发了什么"的阅读流。
    */
-  function newRow(tagClass, tagText) {
+  function newRow(tagClass, tagText, ts) {
     var row = document.createElement('div');
     row.className = 'ln';
     var tag = document.createElement('span');
@@ -78,7 +78,7 @@ var countdownTimer = null;
     body.className = 'body';
     var stamp = document.createElement('span');
     stamp.className = 't';
-    stamp.textContent = nowText();
+    stamp.textContent = nowText(ts);
     row.appendChild(tag);
     row.appendChild(body);
     row.appendChild(stamp);
@@ -97,10 +97,10 @@ var countdownTimer = null;
   }
 
   /** 追加回显：贴到当前回显行；没有就新起一行（设备徽章）。 */
-  function append(text) {
+  function append(text, ts) {
     if (!text) return;
     if (!curRx) {
-      curRx = newRow('dev', devLabel());
+      curRx = newRow('dev', devLabel(), ts);
       curRx.classList.add('rx');
     }
     curRx.appendChild(document.createTextNode(text));
@@ -147,9 +147,9 @@ var countdownTimer = null;
   };
 
   /** 打一行"谁发的 + 命令"，紧跟其后的回显会自动对齐到命令文字下面。 */
-  function appendTx(who, command) {
+  function appendTx(who, command, ts) {
     var meta = WHO[who] || WHO.dev;
-    var body = newRow(meta[0], meta[1]);
+    var body = newRow(meta[0], meta[1], ts);
     body.classList.add('tx');
     body.textContent = command;
     curRx = null;         // 下一条回显要新起一行（设备徽章）
@@ -459,7 +459,9 @@ function renewWhileComposing() {
 
   // 帧游标（1.17）：页面按 since 读，**不消费**帧，别的看客（测试脚本/另一个标签）
   // 也能各自看到同样的事件。以前 /poll 取走即清空，谁先轮询谁拿到。
-  var frameCursor = 0;
+  // 1.57：首屏用 -1 = "只从现在开始"，不要把整圈历史当成刚发生的事画出来。
+var frameCursor = -1;
+var startedOnce = false;
 
   // 把一次 /poll 的结果画出来并推进游标。tick 和「读一次」共用一份，
   // 免得两处各写一遍、后来只改了一处（这类"一半对一半错"最费排查时间）。
@@ -470,11 +472,11 @@ function renewWhileComposing() {
     }
     // 自动发送 / AI 发起的每一帧：先打来源+命令，再打回显（来源映射见 WHO）
     (data.frames || []).forEach(function (f) {
-      appendTx(f.source || 'auto', f.tx);
+      appendTx(f.source || 'auto', f.tx, f.ts);
       if (dispMode === 'hex') {
         if (f.hex) append(f.hex + '\n');
       } else if (f.rx) {
-        append(f.rx);
+        append(f.rx, f.ts);
       } else if (!f.rx_pending) {
         // 轻模式**同步**收发（手动发送走这条）：这一帧空了就是设备真没回话
         appendNote('（设备没回话）');
@@ -492,7 +494,25 @@ function renewWhileComposing() {
     }
   }
 
+  /* 载入历史（1.57）：默认不画旧帧（首屏从现在开始），想看才点。
+     时间戳用的是帧自己的 ts —— 老帧就该显示"当初"的时刻。 */
+  function loadHistory(limit) {
+    api('/poll?since=0').then(function (data) {
+      if (!data || !data.ok) return;
+      var frames = (data.frames || []).slice(-(limit || 50));
+      if (!frames.length) { pushEvent('', '没有历史帧'); return; }
+      frames.forEach(function (f) {
+        appendTx(f.source || 'auto', f.tx, f.ts);
+        if (dispMode === 'hex') { if (f.hex) append(f.hex + '\n', f.ts); }
+        else if (f.rx) append(f.rx, f.ts);
+      });
+      pushEvent('', '已载入最近 ' + frames.length + ' 条历史');
+    });
+  }
+
   function tick() {
+    // startedOnce 之前 frameCursor 是 -1 → 只取从现在起的帧；回来后服务器给 cursor
+
     api('/status').then(function (data) {
       if (data.ok) renderStatus(data);
     });
@@ -555,6 +575,10 @@ function renewWhileComposing() {
 
   // 清空：回显 + 状态轨道 + 告警，一起清。
   // 用户测试时告警一直弹，"清空"只清回显等于没清（14:35 需求 3）。
+  if ($('btnHistory')) {
+    $('btnHistory').addEventListener('click', function () { loadHistory(50); });
+  }
+
   $('btnClear').addEventListener('click', function () {
     consoleEl.textContent = '';
     consoleEl.scrollTop = 0;

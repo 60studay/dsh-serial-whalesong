@@ -237,7 +237,10 @@ def run_checks(base, original):
     check("回显有「设备」徽章", "'设备'" in front or '>设备<' in front)
     # 收发区每一行要带时间（用户要的："我发给硬件"和"硬件发给我"各显示时间）
     check("每行建了时间节点", "stamp.className = 't'" in js_text, js_text[:80])
-    check("时间来自 nowText()", "nowText()" in js_text, js_text[:80])
+    # 1.57：行时间必须用**帧自己的 ts**（以前是渲染时刻，回放的老帧全被盖成"刚才"）
+    check("时间来自帧 ts（nowText(ts)）",
+          "nowText(ts)" in js_text and "stamp.textContent = nowText(ts)" in js_text,
+          js_text[:120])
     check("CSS 有第三列时间", ".ln > .t" in css_text, css_text[:80])
     check("收发区用 grid 两列对齐", "grid-template-columns" in css_text)
     # 表单不能被轮询覆盖：/status 每 700ms 刷一次，无条件写回会导致"根本改不了"
