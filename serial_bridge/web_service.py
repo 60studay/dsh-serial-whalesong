@@ -354,6 +354,11 @@ def open_web(paths, scene, port=0, mode="light", open_browser=False,
     # 显式把决定结果传给子进程：子进程自己也会读开关，但两边各读一次万一文件正在改
     # 就可能不一致。这里一次说定。
     argv.append("--open-browser" if open_browser else "--no-browser")
+    # 1.42：Windows 上必须是 CREATE_NO_WINDOW，否则从桌面端（Electron，本身没有控制台）
+    # 起子进程时，系统会给这个控制台程序**新建一个黑窗口**；用户关掉那个窗口 =
+    # 杀进程 = 串口突然释放、页面失效（用户当场看到并来问"是不是中毒了"）。
+    # start_new_session 是 POSIX 语义，对 Windows 窗口问题没用。
+    creation = 0x08000000 if sys.platform == "win32" else 0
     subprocess.Popen(
         argv,
         cwd=parts[0],
@@ -361,6 +366,7 @@ def open_web(paths, scene, port=0, mode="light", open_browser=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
+        creationflags=creation,
     )
 
     deadline = time.time() + max(3.0, float(wait_s))

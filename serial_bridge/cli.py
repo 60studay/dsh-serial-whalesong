@@ -325,7 +325,10 @@ def cmd_send(paths, args):
     if bool(getattr(args, "hold", False)):
         resolved_com = ""
         try:
-            from .ports import resolve_port
+            # 注意：这里**不能**再写 `from .ports import resolve_port` ——
+            # 函数内 import 会把 resolve_port 变成整个函数的局部名，
+            # 于是下面普通分支里的 resolve_port(...) 直接 UnboundLocalError
+            # （对面 18:10 抓到的 P0 就是这个）。
             resolved_com = resolve_port(cfg)["device"]
         except BridgeError:
             resolved_com = str(cfg.get("com") or "").strip()
