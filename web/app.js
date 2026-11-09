@@ -461,10 +461,24 @@ function renewWhileComposing() {
   // 也能各自看到同样的事件。以前 /poll 取走即清空，谁先轮询谁拿到。
   // 1.57：首屏用 -1 = "只从现在开始"，不要把整圈历史当成刚发生的事画出来。
 var frameCursor = -1;
+// 1.58：已经画过的帧（ts|tx）。live 和历史共用一份，
+// 于是"连点载入历史"不会把同一批帧追加多遍。
+var seenFrames = {};
 var startedOnce = false;
 
   // 把一次 /poll 的结果画出来并推进游标。tick 和「读一次」共用一份，
   // 免得两处各写一遍、后来只改了一处（这类"一半对一半错"最费排查时间）。
+  function frameKey(f) {
+    return String(f && f.ts || '') + '|' + String(f && f.tx || '');
+  }
+
+  function frameSeen(f) {
+    var key = frameKey(f);
+    if (seenFrames[key]) return true;
+    seenFrames[key] = true;
+    return false;
+  }
+
   function applyPoll(data) {
     if (!data.ok) return;
     if (typeof data.cursor === 'number' && data.cursor > frameCursor) {
@@ -472,6 +486,7 @@ var startedOnce = false;
     }
     // 自动发送 / AI 发起的每一帧：先打来源+命令，再打回显（来源映射见 WHO）
     (data.frames || []).forEach(function (f) {
+      if (frameSeen(f)) return;
       appendTx(f.source || 'auto', f.tx, f.ts);
       if (dispMode === 'hex') {
         if (f.hex) append(f.hex + '\n');
@@ -501,12 +516,17 @@ var startedOnce = false;
       if (!data || !data.ok) return;
       var frames = (data.frames || []).slice(-(limit || 50));
       if (!frames.length) { pushEvent('', '没有历史帧'); return; }
+      var added = 0;
       frames.forEach(function (f) {
+        if (frameSeen(f)) return;             // 1.58：连点不重复
+        added += 1;
         appendTx(f.source || 'auto', f.tx, f.ts);
         if (dispMode === 'hex') { if (f.hex) append(f.hex + '\n', f.ts); }
         else if (f.rx) append(f.rx, f.ts);
       });
-      pushEvent('', '已载入最近 ' + frames.length + ' 条历史');
+      pushEvent('', added
+        ? '已载入 ' + added + ' 条历史（重复的已跳过）'
+        : '没有新的历史可载入（都已在上面）');
     });
   }
 
