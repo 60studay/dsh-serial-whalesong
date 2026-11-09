@@ -35,11 +35,13 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
 from . import cli_query, cli_web
 from . import io as serial_io
+from . import session as session_mod
 from .cli_base import (BASE, Logger, _coerce, _emit, _fail, _ok, _paths,
                        _scene, default_log_root)
 # `_default_scene` 是 webctl 的老入口，外部（selfcheck_webctl.py）还在从 cli 导入它
@@ -169,6 +171,90 @@ def _warn_page_not_seeing(paths, scene_name):
           % (scene_name, url, scene_name), file=sys.stderr)
 
 
+def _session_http(url, path, payload=None, timeout=20):
+    import urllib.request
+    data = None
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(url + path, data=data,
+                                     headers={"Content-Type": "application/json; charset=utf-8"})
+    with urllib.request.urlopen(request, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _session_alive(url):
+    try:
+        return bool(_session_http(url, "/ping", None, timeout=3).get("ok"))
+    except Exception:
+        return False
+
+
+def _ensure_session(paths, com, baud, idle=60.0):
+    """拿到（必要时拉起）这个口上的会话进程，返回它的 url。"""
+    info = session_mod.read_session(paths, com)
+    url = str((info or {}).get("url") or "")
+    if url and _session_alive(url):
+        return url
+    if info:
+        session_mod.clear_session(paths, com)
+    import subprocess
+    env = dict(os.environ)
+    env["SERIAL_BRIDGE_RUNTIME_DIR"] = paths["runtime_root"]
+    env["SERIAL_BRIDGE_LOG_DIR"] = paths["log_root"]
+    env["SERIAL_BRIDGE_PROTO_DIR"] = paths["protocol_root"]
+    flags = 0
+    if os.name == "nt":
+        flags = 0x00000008 | 0x00000200      # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(
+        [sys.executable, "-m", "serial_bridge.session",
+         "--com", com, "--baud", str(baud), "--idle", str(idle)],
+        cwd=BASE, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        creationflags=flags)
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        info = session_mod.read_session(paths, com)
+        url = str((info or {}).get("url") or "")
+        if url and _session_alive(url):
+            return url
+        time.sleep(0.15)
+    raise BridgeError("port_busy", "会话进程没起来（%s）。" % com,
+                      hint=["口是否被别的程序占着", "再试一次；或先 serial_close 清掉旧会话"])
+
+
+def cmd_close(paths, args):
+    """释放串口会话（serial_close）。没有会话也算成功 —— 幂等。"""
+    com = str(getattr(args, "com", "") or "").strip()
+    if not com:
+        # 不带 com：把所有会话都关掉
+        closed = []
+        try:
+            names = os.listdir(os.path.join(paths["runtime_root"], "state"))
+        except OSError:
+            names = []
+        for name in names:
+            if name.startswith("session-") and name.endswith(".json"):
+                com_x = name[len("session-"):-len(".json")].replace("-", ":")
+                info = session_mod.read_session(paths, com_x)
+                if info:
+                    try:
+                        _session_http(str(info.get("url")), "/close", {}, timeout=5)
+                    except Exception:
+                        pass
+                session_mod.clear_session(paths, com_x)
+                closed.append(com_x)
+        return _ok({"closed": closed, "note": "已释放全部会话" if closed else "没有活动会话"})
+
+    info = session_mod.read_session(paths, com)
+    if info:
+        try:
+            _session_http(str(info.get("url") or ""), "/close", {}, timeout=5)
+        except Exception:
+            pass
+    session_mod.clear_session(paths, com)
+    return _ok({"com": com, "closed": True,
+                "note": "会话已释放" if info else "这个口本来就没有会话"})
+
+
 def cmd_send(paths, args):
     # 1.35：**场景可省**。只给 --com 时造一个临时场景，用完就丢 ——
     # 场景是"长期配置"，不该是"入场券"（对面 14:30 的判据）。
@@ -233,6 +319,43 @@ def cmd_send(paths, args):
                 hint=["在场景 config.json 的 watch.allowed_auto_commands 里加上它",
                       "白名单为空时禁止一切自动命令"],
             )
+
+    # 0 级：要求"保持会话"（1.38）→ 交给会话进程。控制权检查在上面已经做过，
+    #    会话不会绕过它（human/paused 到不了这里）。
+    if bool(getattr(args, "hold", False)):
+        resolved_com = ""
+        try:
+            from .ports import resolve_port
+            resolved_com = resolve_port(cfg)["device"]
+        except BridgeError:
+            resolved_com = str(cfg.get("com") or "").strip()
+        if not resolved_com:
+            raise BridgeError("no_device", "没有可用的串口，无法建立会话。",
+                              hint=["serial_list 看当前插着哪些口",
+                                    "也可以直接给 com：serial_send(com=\"COM10\", hold=true)"])
+        url = _ensure_session(paths, resolved_com, int(cfg.get("baud") or 115200),
+                              float(getattr(args, "idle", 60) or 60))
+        result = _session_http(url, "/send",
+                               {"text": args.command,
+                                "wait": not bool(getattr(args, "no_wait", False))},
+                               timeout=60)
+        if not result.get("ok"):
+            err = result.get("error") or {}
+            raise BridgeError(err.get("kind") or "internal",
+                              err.get("message") or "会话发送失败", hint=err.get("hint"))
+        data = {
+            "scene": scene.name, "command": args.command,
+            "port": resolved_com, "port_source": "session",
+            "response": result.get("rx_text", ""),
+            "response_hex": result.get("rx_hex", ""),
+            "bytes": int(result.get("bytes") or 0),
+            "empty": not result.get("rx_text"),
+            "session_seq": int(result.get("seq") or 0),
+            "note": "会话第 %d 条（端口保持打开）" % int(result.get("seq") or 0),
+        }
+        if getattr(args, "no_wait", False):
+            data["submitted"] = True
+        return _ok(data)
 
     # 一级：管家在跑 → 走它（常驻连接，~几十毫秒）
     via_daemon = _forward_to_daemon(paths, scene.name, args.command, actor,
@@ -398,6 +521,9 @@ def build_parser():
     # 这里只负责把它们挂上去 —— 加子命令只改一个文件。
     cli_query.add_parsers(sub)
 
+    close = sub.add_parser("close")
+    close.add_argument("--com", default="", help="要释放哪个口的会话；省略=全部")
+
     send = sub.add_parser("send")
     send.add_argument("--scene", default="",
                       help="场景名；**可省** —— 只给 --com 也能发（1.35）")
@@ -406,6 +532,9 @@ def build_parser():
     send.add_argument("--command", required=True)
     send.add_argument("--as", dest="actor", default="human", choices=["human", "ai"])
     send.add_argument("--auto", action="store_true", help="按自动命令处理，强制白名单检查")
+    send.add_argument("--hold", action="store_true",
+                      help="保持串口打开，供后续调用复用（会话）；空闲 60 秒自动释放")
+    send.add_argument("--idle", type=float, default=60.0, help="会话空闲多少秒释放（默认 60）")
     send.add_argument("--no-wait", action="store_true",
                       help="发完立刻返回，不等回显（批量下命令用，回显之后用 read 取）")
 
@@ -437,6 +566,7 @@ def main(argv=None):
         "scan": cli_query.cmd_scan,
         "info": cli_query.cmd_info,
         "send": cmd_send,
+        "close": cmd_close,
         "read": cli_query.cmd_read,
         "status": cli_query.cmd_status,
         "control": cli_query.cmd_control,

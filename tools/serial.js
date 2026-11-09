@@ -171,6 +171,13 @@ register({
       description:
         'The command text without line ending; the scene config appends its own (default CRLF).',
     },
+    hold: {
+      type: 'boolean',
+      description:
+        'Keep the port open and reuse it for the next calls on the same com (a session). ' +
+        'Use it for multi-step AT sequences (AT+INIT → AT+INQ → AT+PAIR) — otherwise every call ' +
+        'reopens the port and pulses DTR/RTS. Auto-released after 60s idle; call serial_close to end it now.',
+    },
     wait: {
       type: 'boolean',
       description:
@@ -197,6 +204,7 @@ register({
         empty: { type: 'boolean' },
         warning: { type: 'string', description: 'Present when the device stayed silent.' },
         submitted: { type: 'boolean', description: 'True when wait=false: the bytes are out, the reply was not waited for.' },
+        sessionSeq: { type: 'integer', description: 'Which command this was inside the held session (hold=true).' },
         submitMs: { type: 'integer', description: 'Time until the bytes were on the wire.' },
       },
     },
@@ -231,6 +239,7 @@ register({
     if (scene) argv.push('--scene', scene);
     if (com) argv.push('--com', com);
     if (baud) argv.push('--baud', String(baud));
+    if (args?.hold === true) argv.push('--hold');
     if (!wait) argv.push('--no-wait');
     const data = await runCli(argv);
     return {
@@ -245,6 +254,7 @@ register({
       empty: Boolean(data.empty),
       ...(data.submitted ? { submitted: true } : {}),
       ...(Number.isFinite(data.submit_ms) ? { submitMs: data.submit_ms } : {}),
+      ...(Number.isFinite(data.session_seq) ? { sessionSeq: data.session_seq } : {}),
       ...(data.warning ? { warning: data.warning } : {}),
     };
   },
@@ -512,6 +522,47 @@ register({
         source: alert.source ?? '',
       })),
       alertsPath: data.alerts_path ?? '',
+    };
+  },
+});
+
+
+// ── serial_close ───────────────────────────────────────────────────────────
+register({
+  name: 'serial_close',
+  description:
+    'Release a held serial session (created with serial_send hold=true). ' +
+    'Do this when you are done with a multi-step sequence so the port is free again. ' +
+    'Sessions also auto-release after 60s idle, so this is optional — but explicit is better.',
+  parameters: {
+    com: { type: 'string', required: false, description: 'Port whose session to release; omit to release all.' },
+  },
+  output: {
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['closed', 'note'],
+      properties: {
+        com: { type: 'string' },
+        closed: { type: 'boolean' },
+        note: { type: 'string' },
+      },
+    },
+    render: (_args, value) => [{
+      type: 'text',
+      text: `<closed>${value.closed}</closed>\n${value.note}`,
+    }],
+  },
+  isConcurrencySafe: () => true,
+  async execute(args) {
+    const com = String(args?.com ?? '').trim();
+    const argv = ['close'];
+    if (com) argv.push('--com', com);
+    const data = await runCli(argv);
+    return {
+      com: data.com ?? com,
+      closed: Boolean(data.closed),
+      note: data.note ?? '',
     };
   },
 });
