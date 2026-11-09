@@ -113,7 +113,10 @@ def main():
     if not opened.get("ok"):
         skip("③ 转发", "（实例没起来）")
     else:
-        got3 = run(["send", "--scene", "蓝牙AT", "--command", "AT"])
+        # 1.43：这里**必须带 --com 覆盖**。双 CH340 环境里场景本身是歧义的，
+        # 用纯 --scene 去验"走转发"，必然先死在歧义上 —— 那不是功能坏，是测试写死了
+        # "场景一定能解析"（对面 18:50 抓到的自检本身的问题）。
+        got3 = run(["send", "--scene", "蓝牙AT", "--com", port, "--command", "AT"])
         data3 = got3.get("data") or {}
         check("③ 走网页转发", data3.get("port_source") == "web",
               str(data3.get("port_source")))
@@ -122,16 +125,27 @@ def main():
     return finish()
 
 
+def _safe(text):
+    """Windows 控制台是 GBK，非 ASCII 字符会抛 UnicodeEncodeError 把脚本整个弄崩。"""
+    try:
+        return text.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(
+            sys.stdout.encoding or "utf-8", errors="replace")
+    except Exception:
+        return text
+
+
 def finish():
     print("\n" + "=" * 70)
     print("PASS %d / FAIL %d / SKIP %d" % (len(PASS), len(FAIL), len(SKIP)))
     if FAIL:
         for item in FAIL:
-            print("  - %s" % item)
+            print("  - %s" % _safe(item))
     if SKIP:
         for item in SKIP:
-            print("  · %s" % item)
-    print("没有网页实例时也能直接发 ✅" if not FAIL else "无页面直发有问题 ❌")
+            print("  . %s" % _safe(item))
+    # 1.43：别打印 ✅/❌ —— GBK 控制台会抛异常，把"1 个失败"变成"脚本崩溃"
+    print("direct send without a web instance: OK" if not FAIL
+          else "direct send without a web instance: FAILED")
     return 0 if not FAIL else 1
 
 
