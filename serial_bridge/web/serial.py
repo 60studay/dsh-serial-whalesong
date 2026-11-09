@@ -269,6 +269,18 @@ class SerialMixin(object):
             "已记入状态文件 changed_by=ai（可审计）。" if self_granted else ""
         ]).strip()
         current_state = self.state.read().get("state")
+        # 1.44-b（用户 20:1x）：倒计时期间点「人类接管」**必须升级成永久**。
+        # 以前这里幂等直接返回"已经是人类接管"，于是人想"钉住"却钉不住。
+        if action == "human" and not self_granted:
+            current = self.state.force_state(
+                STATE_HUMAN, "human-explicit",
+                "人类点击了[人类接管]（不自动恢复）", permanent=True)
+            return {
+                "ok": True, "control": STATE_HUMAN, "state": current,
+                "port_action": "unchanged", "watch_running": self.loop.running,
+                "self_granted": False,
+                "note": "已切换为「人类接管」：不会自动恢复",
+            }
         # 幂等：已经是目标状态就当作成功，不要报 400。
         # （早期版本把 human->human 当成非法迁移，导致"已经在人类手中"时
         #  再点[人类接管]会报错，同一个按钮有时好有时坏，非常迷惑。）

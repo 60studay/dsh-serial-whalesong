@@ -150,6 +150,14 @@ def cmd_control(paths, args):
         )
 
     current_state = state.read().get("state")
+    # 1.44-b：倒计时中点[人类接管]要能升级成永久（别被"幂等"挡住）
+    if args.action == "human":
+        current = state.force_state(
+            STATE_HUMAN, "human-explicit",
+            "人类点击了[人类接管]（不自动恢复）", permanent=True)
+        return _ok({"scene": scene.name, "state": current,
+                    "self_granted": False,
+                    "note": "已切换为「人类接管」：不会自动恢复"})
     # 幂等：已经在目标状态就直接成功（重按同一个按钮不该报错）
     if current_state == target:
         return _ok({"scene": scene.name, "state": state.read(),

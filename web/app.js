@@ -414,9 +414,9 @@ function paintCountdown() {
   var label = document.getElementById('controlstate');
   if (!label) return;
   var base = STATE_LABEL[lastState && lastState.control] || (lastState && lastState.control) || '';
+  // 永久接管**不加括号说明**（用户 20:1x："不用拿括号标出来"），就是基础文案本身
   if (!controlUntil) {
-    label.textContent = controlBy === 'human-explicit' || controlBy === 'human'
-      ? '人类控制（不自动恢复）' : base;
+    label.textContent = base;
     return;
   }
   var left = Math.max(0, Math.round(controlUntil - Date.now() / 1000));
