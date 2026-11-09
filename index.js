@@ -50,15 +50,23 @@ export function apply(ctx, config = {}) {
       ? config.pythonPath.trim()
       : DEFAULT_PYTHON;
 
-  const pythonCandidates = [{ file: configuredPython, args: [] }];
-  if (process.env.DSH_HOME) {
-    pythonCandidates.push({
-      file: path.join(process.env.DSH_HOME, 'dsh-runtimes', 'dsh-primary-runtime',
-        'dependencies', 'python', 'python.exe'),
-      args: [],
-    });
+  // 1.54：候选顺序**按"可靠程度"排**，并且跳过 Windows 商店别名的空壳 python.exe
+  // （`C:\Users\<用户>\AppData\Local\Microsoft\WindowsApps\python.exe` 是个转发壳：
+  //  启动时可能弹一个以 `C:\Users\...` 为标题的控制台窗口，而且经常没有 serial 模块）。
+  const pythonCandidates = [];
+  const bundledPython = process.env.DSH_HOME
+    ? path.join(process.env.DSH_HOME, 'dsh-runtimes', 'dsh-primary-runtime',
+      'dependencies', 'python', 'python.exe')
+    : '';
+  const explicitlyConfigured =
+    typeof config.pythonPath === 'string' && config.pythonPath.trim() !== '';
+  if (explicitlyConfigured) pythonCandidates.push({ file: configuredPython, args: [] });
+  if (bundledPython) pythonCandidates.push({ file: bundledPython, args: [] });
+  pythonCandidates.push({ file: 'py', args: ['-3'] }, { file: 'python', args: [] });
+  if (!explicitlyConfigured && !bundledPython) {
+    // 配置和内置都没有时才把 `python` 放最前（总得有一个能跑的）
+    pythonCandidates.unshift({ file: 'python', args: [] });
   }
-  pythonCandidates.push({ file: 'python', args: [] }, { file: 'py', args: ['-3'] });
 
   // logRoot 的决定顺序：插件配置 > 插件自带 config.json 的 log_root > 默认值。
   // 读 config.json 是为了让"插件进程"和"手动启动的网页"用同一个目录——
@@ -104,8 +112,24 @@ export function apply(ctx, config = {}) {
 
   async function resolvePython(env) {
     if (state.python) return state.python;
+
+    // 1.54：**解释器要缓存到磁盘**，下次启动不再探测（每次调用都探测 = 每次都可能闪窗）
+    const cachePath = path.join(runtimeRoot, 'python-cache.json');
+    try {
+      const cached = JSON.parse(readFileSync(cachePath, 'utf8').replace(/^\uFEFF/, ''));
+      if (cached && typeof cached.file === 'string' && cached.file) {
+        state.python = { file: cached.file, args: Array.isArray(cached.args) ? cached.args : [],
+          version: String(cached.version || '') };
+        return state.python;
+      }
+    } catch { /* 第一次运行没有缓存，正常 */ }
+
     const failures = [];
     for (const candidate of pythonCandidates) {
+      if (/[\\/]WindowsApps[\\/]/i.test(String(candidate.file))) {
+        failures.push(`${candidate.file}: 跳过（Windows 商店别名，会弹空控制台窗口）`);
+        continue;
+      }
       try {
         const { stdout } = await execFileAsync(
           candidate.file,
@@ -114,6 +138,12 @@ export function apply(ctx, config = {}) {
           { env, encoding: 'utf8', timeout: 10000, windowsHide: true, maxBuffer: 1 << 20 },
         );
         state.python = { ...candidate, version: String(stdout).trim() };
+        try {
+          await fsp.mkdir(runtimeRoot, { recursive: true });
+          await fsp.writeFile(cachePath,
+            JSON.stringify({ file: candidate.file, args: candidate.args,
+              version: state.python.version }, null, 2), 'utf8');
+        } catch { /* 缓存写不进去不影响使用 */ }
         return state.python;
       } catch (error) {
         const detail = String(error?.stderr ?? error?.message ?? '').trim().split(/\r?\n/)[0];
@@ -134,8 +164,11 @@ export function apply(ctx, config = {}) {
    */
   async function runCli(argv) {
     const protocolRoot = await resolveProtocolRoot();
-    const env = makeEnv({ logRoot, protocolRoot, vendor: VENDOR });
+    let env = makeEnv({ logRoot, protocolRoot, vendor: VENDOR });
     const python = await resolvePython(env);
+    // 1.54：把"这次用的是哪个解释器"告诉内核，`serial_status` 会带出来
+    // （用户排查"黑窗标题是 C:\Users\..."时，第一件事就是确认到底跑了哪个 python）
+    env = { ...env, SERIAL_BRIDGE_PYTHON: python.file };
 
     // 「开关=开 时用串口就自动开页面」挂在这里：runCli 是所有工具的唯一咽喉。
     // 里面不 await、不读输出、异常全吞——一次 serial_send 不能被它拖慢一毫秒。

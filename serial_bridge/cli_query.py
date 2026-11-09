@@ -10,6 +10,8 @@
 （`serial_list` / `serial_info`），**加字段可以，改名要同时改 schema 和自检**。
 """
 
+import os
+
 from .cli_base import _ok, _scene
 from .config import list_scenes
 from .errors import BridgeError
@@ -106,6 +108,8 @@ def cmd_status(paths, args):
     return _ok({
         "scene": scene.name,
         "state": current,
+        # 1.54：这次调用用的是哪个解释器（排查黑窗/环境问题要用）
+        "python_path": os.environ.get("SERIAL_BRIDGE_PYTHON", ""),
         "ai_may_send": bool(allowed),
         "watched": state.presence_alive(),
         "transport": transport_info,
