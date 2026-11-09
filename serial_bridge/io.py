@@ -244,6 +244,20 @@ def describe_no_response(resolved, cfg, baud=None):
         "TX/RX 是否接反",
         "命令是否需要换行结尾（当前 newline=%r）" % cfg.get("newline", "\\r\\n"),
     ]
+    # 1.63：本机还有"同型号"的另一个口 → 直接点出来。
+    # 两条 CH340 同时插着时，"场景落到 A、设备其实在 B"是最常见的坑；
+    # 只提示波特率/接线会让人白拆线。
+    try:
+        from .ports import same_model_ports
+        for item in same_model_ports(resolved.get("device")):
+            hints.append(
+                "本机还有一个同型号口 %s；如果这块设备不在 %s，"
+                "用 serial_list 看场景落到哪个口，或 --com %s 指定"
+                % (item.get("device"), resolved.get("device"), item.get("device")))
+            break
+    except Exception:
+        pass
+
     extra = cfg.get("no_response_hint")
     if isinstance(extra, str):
         extra = [extra]

@@ -372,3 +372,30 @@ def _ambiguous(value, field, hits, ports):
         ] + _available_hint(ports),
         candidates=[port_label(p) for p in hits],
     )
+
+
+def same_model_ports(device, ports=None):
+    """和 `device` 同 VID:PID 的**其它**口（1.63）。
+
+    为什么需要：两块 CH340 同时插着时，"场景落到 A 口、设备其实在 B 口"
+    是最常见的坑。设备不回话时如果能点出"本机还有一个同型号口"，人一眼就懂了；
+    只提示"波特率/接线"会让人去拆线。
+    """
+    try:
+        current = str(device or "").strip().upper()
+        listing = ports if ports is not None else scan_ports()
+        mine = None
+        for item in listing:
+            if str(item.get("device") or "").upper() == current:
+                mine = item
+                break
+        if not mine:
+            return []
+        vid_pid = _normalize_vid_pid(mine.get("vid_pid") or "")
+        if not vid_pid:
+            return []
+        return [item for item in listing
+                if str(item.get("device") or "").upper() != current
+                and _normalize_vid_pid(item.get("vid_pid") or "") == vid_pid]
+    except Exception:
+        return []

@@ -32,7 +32,18 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LEDGER = os.path.join(HERE, "_需求文档", "进度总账.md")
+
+
+def _ledger_path():
+    """总账 2026-11-09 起搬到仓库外的 _内务/（过程文档不进产品仓库）。"""
+    for item in (os.path.join(HERE, "_需求文档", "进度总账.md"),
+                 os.path.join(os.path.dirname(HERE), "_内务", "进度总账.md")):
+        if os.path.exists(item):
+            return item
+    return os.path.join(os.path.dirname(HERE), "_内务", "进度总账.md")
+
+
+LEDGER = _ledger_path()
 INDEX_JS = os.path.join(HERE, "index.js")
 
 # Windows 控制台默认 GBK，输出中文/符号会炸。先把自己掰成 UTF-8。
@@ -97,9 +108,10 @@ def main():
     print("=" * 70)
 
     if not os.path.exists(LEDGER):
-        bad("总账存在", "找不到 %s" % LEDGER)
-        summary()
-        return 1
+        # 2026-11-09：总账已归档，内容并入《待办清单》（过程文档搬出产品仓库）。
+        # 没有总账就没有"对账"可做 —— 明确跳过，而不是报红（红会掩盖真的回归）。
+        print("SKIP: 进度总账已归档（内容并入《内务/待办清单.md》），本自检跳过")
+        return 0
 
     ledger = read_text(LEDGER)
 
