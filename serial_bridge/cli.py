@@ -321,8 +321,14 @@ def cmd_send(paths, args):
                       "查看当前状态：serial_status"],
             )
     else:
-        # 安全规则 1：人类命令永远优先，AI 托管立即让位
-        state.note_human_command()
+        # 安全规则 1：人类命令永远优先，AI 托管立即让位。
+        # 时长和网页走同一个偏好（否则 CLI 发命令是 10 秒、页面发是 5 秒，用户会懵）
+        try:
+            from .uiprefs import read_prefs
+            hold = float(read_prefs(paths).get("human_hold_seconds") or 10)
+        except Exception:
+            hold = 10.0
+        state.note_human_command(hold_s=hold)
 
     if args.auto:
         engine = RuleEngine(scene.watch_cfg())
