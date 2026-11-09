@@ -211,6 +211,19 @@ register({
         warning: { type: 'string', description: 'Present when the device stayed silent.' },
         submitted: { type: 'boolean', description: 'True when wait=false: the bytes are out, the reply was not waited for.' },
         baud: { type: 'integer', description: 'Baud rate that answered (autoBaud=true).' },
+        baudTried: {
+          type: 'array',
+          description: 'Every baud rate that was tried, in order, with what happened (autoBaud=true).',
+          items: {
+            type: 'object',
+            properties: {
+              baud: { type: 'integer' },
+              kind: { type: 'string', description: 'no_valid_response / no_response / port_busy …' },
+            },
+            required: ['baud'],
+            additionalProperties: false,
+          },
+        },
         sessionSeq: { type: 'integer', description: 'Which command this was inside the held session (hold=true).' },
         submitMs: { type: 'integer', description: 'Time until the bytes were on the wire.' },
       },
@@ -223,6 +236,9 @@ register({
         : (value.empty ? '(无回显)' : `${value.response}\n【hex】${value.responseHex}`);
       const lines = [...head, '<rx>', body, '</rx>'];
       if (Number.isFinite(value.submitMs)) lines.push(`<submit_ms>${value.submitMs}</submit_ms>`);
+      if (Array.isArray(value.baudTried) && value.baudTried.length) {
+        lines.push(`<baud_tried>${value.baudTried.map((t) => `${t.baud}:${t.kind || '?'}`).join(' ')}</baud_tried>`);
+      }
       if (value.warning) lines.push(`<warning>${value.warning}</warning>`);
       return [{ type: 'text', text: lines.join('\n') }];
     },
