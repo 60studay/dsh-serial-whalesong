@@ -28,6 +28,8 @@ PREFS_NAME = "ui-prefs.json"
 DEFAULTS = {"auto_open_browser": True, "human_hold_seconds": 10}
 _BOOL_KEYS = frozenset(["auto_open_browser"])
 _INT_KEYS = frozenset(["human_hold_seconds"])
+# 1.49：整数键的范围（越界明确报错，不静默夹紧 —— 用户要的是"能填数字"，不是"猜"
+_INT_RANGES = {"human_hold_seconds": (5, 120)}
 
 
 def prefs_path(paths):
@@ -54,8 +56,19 @@ def read_prefs(paths):
     if not isinstance(raw, dict):
         return data
     for key in DEFAULTS:
-        if key in raw:
-            data[key] = _as_bool(raw[key], DEFAULTS[key])
+        if key not in raw:
+            continue
+        if key in _INT_KEYS:
+            # 1.49：整数键不能走 bool 解析（否则 5 会被读成 True）
+            low, high = _INT_RANGES.get(key, (0, 10 ** 6))
+            try:
+                number = int(str(raw[key]).strip())
+            except (TypeError, ValueError):
+                continue                    # 文件里是脏值 → 保持默认
+            if low <= number <= high:
+                data[key] = number
+            continue
+        data[key] = _as_bool(raw[key], DEFAULTS[key])
     return data
 
 
@@ -78,6 +91,9 @@ def write_prefs(paths, patch):
 
     merged = read_prefs(paths)
     for key, value in patch.items():
+        if key in _INT_KEYS:
+            merged[key] = _coerce_int(key, value)
+            continue
         parsed = _coerce_bool(value)
         if parsed is None:
             # 写的时候不猜：认不出来的值直接报错，别让用户以为"设好了"
@@ -121,3 +137,28 @@ def _coerce_bool(value):
         if lowered in ("false", "no", "off", "0"):
             return False
     return None
+
+
+def _coerce_int(key, value):
+    """整数偏好：必须是数字且在范围内。
+
+    1.49：以前所有键都走 `_coerce_bool`，于是 `--set human_hold_seconds=2`
+    被当成"只能 true/false"拒掉 —— "可配置"是假的。越界要**明确报错**，
+    不做静默夹紧：用户填 999 就该看见"允许 5~120"。
+    """
+    low, high = _INT_RANGES.get(key, (0, 10 ** 6))
+    try:
+        number = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise BridgeError(
+            "config",
+            "%s 只接受整数（%d~%d），收到：%r" % (key, low, high, value),
+            hint=["例如 --set %s=10" % key],
+        )
+    if number < low or number > high:
+        raise BridgeError(
+            "config",
+            "%s 允许 %d~%d，收到 %d" % (key, low, high, number),
+            hint=["倒计时太短会来不及点[人类接管]；太长则 AI 干等"],
+        )
+    return number
