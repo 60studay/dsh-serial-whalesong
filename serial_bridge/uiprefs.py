@@ -23,7 +23,9 @@ from .errors import BridgeError
 PREFS_NAME = "ui-prefs.json"
 
 # 未知键直接报错，不静默吞掉：拼错了要立刻看得见（bili-watch 吃过静默丢 patch 的亏）。
-DEFAULTS = {"auto_open_browser": False}
+# 默认 **开**（用户 2026-11-09 决定）：用串口就顺手把网页带上，看得见发生了什么。
+# 想要安静的人可以在设置页关掉；关过之后这个文件里就是 False，永远优先于默认值。
+DEFAULTS = {"auto_open_browser": True}
 _BOOL_KEYS = frozenset(["auto_open_browser"])
 
 
@@ -36,7 +38,7 @@ def read_prefs(paths):
     """读偏好。文件没写过 / 坏了 / 不是对象，一律回默认值，不抛异常。
 
     为什么要容错：这是 UI 的开关，读失败不该让整个 `serial_web` 报错——
-    退化成"默认关"总比"网页起不来"好。
+    退化成默认值总比"网页起不来"好。
     """
     data = dict(DEFAULTS)
     path = prefs_path(paths)

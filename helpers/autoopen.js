@@ -51,14 +51,22 @@ export function maybeAutoOpen({ argv, python, env, entry, runtimeRoot } = {}) {
   }
 }
 
-/** 读 <runtime_root>/ui-prefs.json。没写过 / 坏了 / 不是对象，都当"关"。 */
+/** 读 <runtime_root>/ui-prefs.json。
+ *
+ * **默认开**（用户 2026-11-09 定的）：没写过这个文件、或者文件里没有这个键 → 开。
+ * 只有用户**明确关掉**（`false`）才不弹。文件坏了才保守当关（读不懂就先别弹）。
+ */
 function readAutoOpen(runtimeRoot) {
   try {
     const raw = JSON.parse(
       readFileSync(path.join(runtimeRoot, 'ui-prefs.json'), 'utf8').replace(/^\uFEFF/, ''),
     );
-    return raw?.auto_open_browser === true;
-  } catch {
+    if (raw && typeof raw === 'object' && 'auto_open_browser' in raw) {
+      return raw.auto_open_browser !== false;
+    }
+    return true;                       // 文件在但没这个键 → 用默认（开）
+  } catch (error) {
+    // 文件不存在（= 从没设置过）→ 开；文件存在但解析失败 → 关（读不懂就别弹）
     return false;
   }
 }
