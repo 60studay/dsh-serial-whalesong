@@ -170,6 +170,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     # 页面自己发的带 client=page；别的调用方（脚本/另一个智能体/curl）
                     # 不带 → 这条会在页面上留一行「外部」，看得见谁动过手
                     from_page=(str(body.get("client") or "") == "page"),
+                    # 1.45：本次调用的端口/波特率覆盖（不落盘，只作用于这一条）
+                    com=str(body.get("com") or ""),
+                    baud=int(body.get("baud") or 0),
                 ))
             if path == "/control":
                 # 缺字段/未知动作都用 400，但必须说清楚是哪一种

@@ -118,8 +118,10 @@ def main():
         # "场景一定能解析"（对面 18:50 抓到的自检本身的问题）。
         got3 = run(["send", "--scene", "蓝牙AT", "--com", port, "--command", "AT"])
         data3 = got3.get("data") or {}
-        check("③ 走网页转发", data3.get("port_source") == "web",
-              str(data3.get("port_source")))
+        # 1.45：带 --com 时 port_source 是 override（如实反映"这次用的哪个口"），
+        # 所以"走没走转发"要看 forwarded 字段，别再看 port_source。
+        check("③ 走网页转发", data3.get("forwarded") is True,
+              str(data3.get("forwarded")))
         run(["webctl", "--action", "close", "--scene", "蓝牙AT"])
 
     return finish()

@@ -114,7 +114,7 @@ def _forward_to_daemon(paths, scene_name, command, actor, no_wait=False):
     }
 
 
-def _forward_to_web(paths, scene_name, command, actor):
+def _forward_to_web(paths, scene_name, command, actor, com="", baud=0):
     """网页在跑时，把命令交给它发（Bug 8）。
 
     返回网页的 JSON 结果；网页没跑/不可达时返回 None，调用方回退到直接开串口。
@@ -135,6 +135,10 @@ def _forward_to_web(paths, scene_name, command, actor):
         "mode": "text",
         "actor": actor,
         "source": "ai" if actor == "ai" else "web",
+        # 1.45：`--com/--baud` 是**这一次调用**的覆盖，转发给页面时也必须带过去，
+        # 否则实例拿着场景重新解析 → 双 CH340 时歧义 → 命令明明有口却发不出去。
+        "com": com or "",
+        "baud": int(baud or 0),
     }, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         url + "/send", data=payload,
@@ -367,7 +371,9 @@ def cmd_send(paths, args):
         return _ok(_require_reply(via_daemon, cfg))
 
     # 二级：网页在跑时统一走它的 /send，这样用户能在页面上看到 AI 发了什么。
-    forwarded = _forward_to_web(paths, scene.name, args.command, actor)
+    forwarded = _forward_to_web(paths, scene.name, args.command, actor,
+                                com=str(getattr(args, "com", "") or ""),
+                                baud=int(getattr(args, "baud", 0) or 0))
     if forwarded is None:
         # 有网页记录但连不上 = 那个页面已经失效。这条命令只在日志里，**页面上不会出现**
         # （用户 A 方案：所有智能体用同一个场景 + 确认页面在跑；这里至少给一句明确提示，
@@ -384,13 +390,19 @@ def cmd_send(paths, args):
             "scene": scene.name,
             "command": args.command,
             "port": forwarded.get("port") or "",
-            "port_source": "web",
+            # 转发路径也要如实说"这次用的是哪个口、怎么定的"：
+            # 带 --com 时是 override，否则沿用实例给的（auto/override）。
+            # 对面 19:30 的判据就是看这个字段（给了 --com 必须能看到 override）。
+            "port_source": forwarded.get("port_source") or "web",
             "note": forwarded.get("note") or "已交给网页发送",
             "response": forwarded.get("rx_text") or "",
             "response_hex": forwarded.get("rx_hex") or "",
             "bytes": int(forwarded.get("bytes") or 0),
             "elapsed_ms": int(forwarded.get("elapsed_ms") or 0),
             "empty": not bool(forwarded.get("rx_text")),
+            # 明确标记"这条是网页实例发的"：port_source 现在可能是 override（带 --com），
+            # 不能再用它判断有没有走转发（自检踩过）。
+            "forwarded": True,
         }
         if accepted_only:
             data["note"] = "已交给网页发送（监视模式，回显在网页上）"

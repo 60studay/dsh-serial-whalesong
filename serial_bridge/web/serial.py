@@ -46,7 +46,8 @@ class SerialMixin(object):
                 time.sleep(0.01)
         return out
 
-    def send(self, text, mode="text", actor="human", source="web", from_page=False):
+    def send(self, text, mode="text", actor="human", source="web", from_page=False,
+             com="", baud=0):
         """发一条命令。
 
         source 表示"谁发的"：web(页面按钮) / ai(插件 serial_send 转发过来)。
@@ -131,14 +132,27 @@ class SerialMixin(object):
             if text:
                 self.logger.append("RX", text)
             return {"ok": True, "accepted": True, "mode": self.mode,
-                    "port": (self.state.read().get("port") or ""),
+                    "port": resolved["device"],
+                    "port_source": "override" if (com or self.override_com) else "auto",
                     "rx_text": text,
                     "rx_hex": " ".join("%02X" % b for b in raw),
                     "bytes": len(raw), "empty": not raw}
 
 
-        resolved = self.current_device()
-        cfg = self.effective_cfg()
+        # 1.45：本次调用的 com/baud 覆盖（不落盘）。
+        # 转发过来的命令带着调用方的 --com；实例必须用它，而不是拿场景重新解析
+        # （双 CH340 时重新解析就歧义了 —— 命令明明有口却被判"分不清"）。
+        cfg = dict(self.effective_cfg())
+        if com:
+            cfg["com"] = str(com)
+            cfg["_override_com"] = str(com)
+        if baud:
+            cfg["baud"] = int(baud)
+        if com or baud:
+            from ..ports import resolve_port as _resolve
+            resolved = _resolve(cfg)
+        else:
+            resolved = self.current_device()
         # 从这里往下是"真的动了硬件"：失败也必须在页面上留一行（1.33 判据 3）
         # Bug 11：hex 模式必须把解析出来的原始字节传下去，
         # 否则 transact 会把 "AA 55" 当成 5 个 ASCII 字符发出去。
@@ -194,6 +208,8 @@ class SerialMixin(object):
             "ok": True,
             "accepted": True,
             "mode": self.mode,
+            "port": resolved["device"],
+            "port_source": "override" if (com or self.override_com) else "auto",
             "rx_text": result["rx_text"],
             "rx_hex": result["rx_hex"],
             "bytes": result["bytes"],
