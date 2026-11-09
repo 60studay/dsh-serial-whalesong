@@ -151,6 +151,55 @@ def _port_free(port):
         sock.close()
 
 
+def _remembered_port(paths, scene):
+    """这个场景上次用的端口（1.34c：端口要固定，用户的收藏/快捷方式才不会失效）。"""
+    inst = read_instance(paths, scene)
+    try:
+        port = int((inst or {}).get("port") or 0)
+    except (TypeError, ValueError):
+        port = 0
+    return port if port > 0 else 0
+
+
+def _remember_port(paths, scene, port):
+    """把这次用的端口写进该场景的实例记录（实例挂了也留着，下次优先用）。"""
+    import json
+    import os
+    path = os.path.join(paths["runtime_root"], "state",
+                        "%s.web.json" % "".join(
+                            ch if ch.isalnum() or ch in "-_" else "-" for ch in scene))
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        data = {"scene": scene}
+    data["preferred_port"] = int(port)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+
+
+def remembered_preferred(paths, scene):
+    """优先用：显式 --port > 上次同场景用的口 > 默认 8898。"""
+    import json
+    import os
+    path = os.path.join(paths["runtime_root"], "state",
+                        "%s.web.json" % "".join(
+                            ch if ch.isalnum() or ch in "-_" else "-" for ch in scene))
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        value = int(data.get("preferred_port") or 0)
+        if value > 0:
+            return value
+    except (OSError, ValueError, TypeError):
+        pass
+    return 0
+
+
 def pick_port(preferred=0):
     """从 preferred 开始找一个能绑的端口。返回 (port, tried)。"""
     start = int(preferred or DEFAULT_PORT)
@@ -283,7 +332,13 @@ def open_web(paths, scene, port=0, mode="light", open_browser=False,
             "note": "该场景已经有网页实例在跑，直接复用（不会再起第二个）",
         }
 
+    # 1.34c：同场景**优先用上次那个端口**（显式 --port 仍然最高优先）
+    if not port:
+        remembered = remembered_preferred(paths, scene)
+        if remembered:
+            port = remembered
     chosen, tried = pick_port(port)
+    _remember_port(paths, scene, chosen)
     env = dict(os.environ)
     vendor = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "vendor", "pyserial-3.5")
