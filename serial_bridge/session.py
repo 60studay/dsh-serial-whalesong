@@ -31,12 +31,26 @@ from .cli_base import _paths as _resolve_paths
 
 
 
+def _paths_for_push():
+    """给跨进程投帧用的 paths（会话进程启动时已经解析过一次，直接用）。"""
+    try:
+        return _resolve_paths()
+    except Exception:
+        return {"runtime_root": os.path.join(os.getcwd(), "logs", ".runtime")}
+
+
 def _post_frame(com, tx, rx):
     """把这一条投进同场景网页的帧流（1.52）。网页没开就算了，不许影响收发。"""
     # 会话自己的状态文件只有 url/pid，没有"场景网页"的地址；
     # 所以由 CLI 在拉起会话时把网页地址塞进环境变量 WB_FRAME_URL（没有就不投）。
     url = os.environ.get("WB_FRAME_URL") or ""
     if not url:
+        # 1.55：没有显式地址时用"最近活跃的页面"兜底（用户开着哪个就投给哪个）
+        try:
+            from . import push as _push
+            _push.push_frame(_paths_for_push(), "", tx, rx, "session")
+        except Exception:
+            pass
         return
     try:
         import urllib.request

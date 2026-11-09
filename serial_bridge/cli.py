@@ -42,6 +42,7 @@ import urllib.request
 from . import cli_query, cli_web
 from . import io as serial_io
 from . import session as session_mod
+from . import push as push_mod
 from .cli_base import (BASE, Logger, _coerce, _emit, _fail, _ok, _paths,
                        _scene, default_log_root)
 # `_default_scene` 是 webctl 的老入口，外部（selfcheck_webctl.py）还在从 cli 导入它
@@ -385,6 +386,8 @@ def cmd_send(paths, args):
                               % ", ".join(str(item["baud"]) for item in tried),
                               hint=["确认设备已上电、TX/RX 没接反",
                                     "有些模块要求先按 KEY 进 AT 模式"])
+        push_mod.push_frame(paths, scene.name, args.command, hit["response"],
+                            push_mod.push_source(actor))
         return _ok({
             "scene": scene.name, "command": args.command,
             "port": resolved_device_for_baud, "port_source": "auto-baud",
@@ -484,6 +487,8 @@ def cmd_send(paths, args):
     # 没有管家、又要求"发完就走"：写完立刻关，回显之后用 read 取
     if getattr(args, "no_wait", False):
         sent = serial_io.send_only(cfg, resolved["device"], args.command)
+        push_mod.push_frame(paths, scene.name, args.command, "",
+                            push_mod.push_source(actor))
         logger.append("TX", args.command)
         state.update(port=resolved["device"], baud=int(cfg.get("baud") or 0),
                      scene=scene.name)
@@ -502,7 +507,17 @@ def cmd_send(paths, args):
             "submitted": True,
         })
 
-    result = serial_io.transact(cfg, resolved["device"], args.command)
+    try:
+        result = serial_io.transact(cfg, resolved["device"], args.command)
+    except BridgeError:
+        # 1.55：**失败也要留一行**，否则"AI 发了但没回应"在页面上完全看不出来
+        push_mod.push_frame(paths, scene.name, args.command, "",
+                            push_mod.push_source(actor))
+        raise
+    # 1.55：页面开着时，页面之外的直发也要进帧流（空回显也算一条 TX）
+    push_mod.push_frame(paths, scene.name, args.command,
+                        result.get("rx_text") or "",
+                        push_mod.push_source(actor))
     logger.append("TX", args.command)
     if result["rx_text"]:
         logger.append("RX", result["rx_text"])
