@@ -85,5 +85,11 @@ def push_frame(paths, scene_name="", tx="", rx="", source="external"):
 
 
 def push_source(actor):
-    """把"谁发的"翻成页面徽章认的来源。"""
-    return "ai" if str(actor or "").lower() == "ai" else "session"
+    """把"谁发的"翻成页面徽章认的来源。
+
+    只会是 `ai` 或 `external`：
+      · `session` 这个来源**只留给真正的 hold 会话**（会话进程自己投）
+      · `--com` / `--auto-baud` / CLI 直发既不是会话、也不是页面 → `external`
+    （1.56：以前这里对非 AI 一律返回 session，于是"直发"冒充成"会话"。）
+    """
+    return "ai" if str(actor or "").lower() == "ai" else "external"
