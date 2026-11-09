@@ -59,11 +59,17 @@ class RuleWorker(object):
         env = dict(os.environ)
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONUTF8"] = "1"
+        # 1.51：Windows 上不加 CREATE_NO_WINDOW，子进程会拿到一个**全新的控制台窗口**；
+        # 从桌面端（Electron，本身没控制台）调工具时就表现为"黑窗闪一下"，
+        # 而且窗口里什么都没有（stdout/stderr 都被管走了）——对用户只有惊吓。
+        flags = 0
+        if sys.platform == "win32":
+            flags = 0x08000000                    # CREATE_NO_WINDOW
         self._proc = subprocess.Popen(
             [sys.executable, "-u", "-m", "serial_bridge.runner"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
-            cwd=self.package_root, env=env,
+            cwd=self.package_root, env=env, creationflags=flags,
         )
         self._stderr_thread = threading.Thread(
             target=self._drain_stderr, name="rule-worker-stderr", daemon=True)

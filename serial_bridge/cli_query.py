@@ -88,6 +88,12 @@ def cmd_read(paths, args):
 def cmd_status(paths, args):
     scene = _scene(paths, args.scene)
     state = SharedState(paths["runtime_root"], scene.name)
+    # 1.50：先结算"人接管到期"，再读状态 —— 否则返回的是结算前那份，
+    # 用户会看到"倒计时已经到 0，status 还说 human"（对面 21:25 抓到）。
+    try:
+        state.expire_human_command()
+    except Exception:
+        pass
     current = state.read()
     # ai_may_send 必须是**真实门禁结果**，不能只看 state 字符串：
     # 没人开网页时门禁是宽松的，此时 state 仍是 human 但 AI 其实可以发。

@@ -141,6 +141,7 @@ var countdownTimer = null;
     watch: ['auto', '定时'],
     rule: ['rule', '规则'],
     external: ['bad', '外部'],
+    session: ['ai', '会话归'],
     cli: ['bad', '外部'],
     dev: ['dev', '设备']
   };

@@ -30,6 +30,25 @@ from .log import Logger
 from .cli_base import _paths as _resolve_paths
 
 
+
+def _post_frame(com, tx, rx):
+    """把这一条投进同场景网页的帧流（1.52）。网页没开就算了，不许影响收发。"""
+    # 会话自己的状态文件只有 url/pid，没有"场景网页"的地址；
+    # 所以由 CLI 在拉起会话时把网页地址塞进环境变量 WB_FRAME_URL（没有就不投）。
+    url = os.environ.get("WB_FRAME_URL") or ""
+    if not url:
+        return
+    try:
+        import urllib.request
+        payload = json.dumps({"tx": tx, "rx": rx, "source": "session"},
+                             ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(url.rstrip("/") + "/frames", data=payload,
+                                         headers={"Content-Type": "application/json; charset=utf-8"})
+        urllib.request.urlopen(request, timeout=2).close()
+    except Exception:
+        pass
+
+
 def _safe(device):
     return "".join(ch if ch.isalnum() else "-" for ch in str(device or ""))
 
@@ -127,6 +146,7 @@ class Session(object):
             text_out = raw.decode("utf-8", errors="replace")
             if text_out:
                 self.logger.append("RX", text_out)
+            _post_frame(self.com, command, text_out)
             self.last_use = time.time()
             return {
                 "ok": True,

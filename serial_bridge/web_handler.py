@@ -174,6 +174,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     com=str(body.get("com") or ""),
                     baud=int(body.get("baud") or 0),
                 ))
+            if path == "/frames":
+                # 1.52：**页面之外**的发送者（会话进程 / CLI 直发）把帧投进来，
+                # 否则用户开了窗口却什么都看不到（"我们说他干了，但什么也没给你看"）。
+                return self._json(self.ctx["push_frame"](
+                    str(body.get("tx") or ""),
+                    str(body.get("rx") or ""),
+                    str(body.get("source") or "external"),
+                ))
             if path == "/control":
                 # 缺字段/未知动作都用 400，但必须说清楚是哪一种
                 action = str(body.get("action") or "").strip()

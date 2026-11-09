@@ -458,6 +458,7 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             "set_theme": set_theme,
             "save_theme_image": save_theme_image,
             "theme_image": theme_image,
+            "push_frame": self.push_external_frame,
             "theme_tokens": theme_tokens,
             "theme_custom_css": theme_custom_css,
             "ping": self.viewer_ping,

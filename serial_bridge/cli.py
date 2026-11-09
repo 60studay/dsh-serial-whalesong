@@ -193,7 +193,7 @@ def _session_alive(url):
         return False
 
 
-def _ensure_session(paths, com, baud, idle=60.0):
+def _ensure_session(paths, com, baud, idle=60.0, scene_name=""):
     """拿到（必要时拉起）这个口上的会话进程，返回它的 url。"""
     info = session_mod.read_session(paths, com)
     url = str((info or {}).get("url") or "")
@@ -206,9 +206,19 @@ def _ensure_session(paths, com, baud, idle=60.0):
     env["SERIAL_BRIDGE_RUNTIME_DIR"] = paths["runtime_root"]
     env["SERIAL_BRIDGE_LOG_DIR"] = paths["log_root"]
     env["SERIAL_BRIDGE_PROTO_DIR"] = paths["protocol_root"]
+    # 1.52：让会话知道自己该把帧投给哪个网页（没有网页就不设，会话不打扰任何人）
+    try:
+        inst = os.path.join(paths["runtime_root"], "state",
+                            "%s.web.json" % session_mod._safe(scene_name))
+        if os.path.exists(inst):
+            with open(inst, encoding="utf-8") as handle:
+                env["WB_FRAME_URL"] = str(json.load(handle).get("url") or "")
+    except Exception:
+        pass
     flags = 0
     if os.name == "nt":
-        flags = 0x00000008 | 0x00000200      # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW（1.51）
+        flags = 0x00000008 | 0x00000200 | 0x08000000
     subprocess.Popen(
         [sys.executable, "-m", "serial_bridge.session",
          "--com", com, "--baud", str(baud), "--idle", str(idle)],
@@ -395,7 +405,8 @@ def cmd_send(paths, args):
                               hint=["serial_list 看当前插着哪些口",
                                     "也可以直接给 com：serial_send(com=\"COM10\", hold=true)"])
         url = _ensure_session(paths, resolved_com, int(cfg.get("baud") or 115200),
-                              float(getattr(args, "idle", 60) or 60))
+                              float(getattr(args, "idle", 60) or 60),
+                              scene_name=scene.name)
         result = _session_http(url, "/send",
                                {"text": args.command,
                                 "wait": not bool(getattr(args, "no_wait", False))},
