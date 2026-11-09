@@ -48,9 +48,9 @@ def main():
     paths = {"runtime_root": root, "common_config": os.path.join(root, "config.json")}
 
     try:
-        print("\n[1] 没写过 = 关（默认值）")
-        check("默认 auto_open_browser=False",
-              uiprefs.read_prefs(paths) == {"auto_open_browser": False},
+        print("\n[1] 没写过 = 开（用户 11-09 定的默认值）")
+        check("默认 auto_open_browser=True",
+              uiprefs.read_prefs(paths) == {"auto_open_browser": True},
               uiprefs.read_prefs(paths))
 
         print("\n[2] 写 → 读回")
@@ -91,12 +91,12 @@ def main():
         print("\n[6] 文件被手改坏 → 回默认，不崩")
         with io.open(uiprefs.prefs_path(paths), "w", encoding="utf-8") as handle:
             handle.write("{ 半个 json")
-        check("坏 JSON → 默认关", uiprefs.read_prefs(paths) == {"auto_open_browser": False})
+        check("坏 JSON → 回默认（开）", uiprefs.read_prefs(paths) == {"auto_open_browser": True})
         with io.open(uiprefs.prefs_path(paths), "w", encoding="utf-8") as handle:
             handle.write("[]")
-        check("非对象 → 默认关", uiprefs.read_prefs(paths) == {"auto_open_browser": False})
+        check("非对象 → 回默认（开）", uiprefs.read_prefs(paths) == {"auto_open_browser": True})
         os.remove(uiprefs.prefs_path(paths))
-        check("文件不存在 → 默认关", uiprefs.read_prefs(paths) == {"auto_open_browser": False})
+        check("文件不存在 → 回默认（开，新装用户也会弹页面）", uiprefs.read_prefs(paths) == {"auto_open_browser": True})
 
         print("\n[7] 复用路径：页面在跑时弹不弹，看窗口还在不在（桩测试）")
         from serial_bridge import web_service
