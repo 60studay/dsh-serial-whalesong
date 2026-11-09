@@ -91,6 +91,7 @@ serial_send({ com: "COM7", baud: 115200, command: "V" })
 COM7   115200  STC8G 测试板 v4
        命令：? P V L0 L1 K E <文本>
        故障注入：D <ms> 延迟 / N <n> 半包 / J <n> 垃圾字节 / S <n> 长突发 / B 二进制帧
+       ⚠️ L0/L1 只是回 OK LED 0/1，本机没外接 LED，灯不会亮 —— 别把"回包"当"物理现象"
 
 COM10  115200  HC-05 蓝牙模块（AT 模式）
        命令：AT、AT+VERSION?、AT+ROLE?、AT+NAME?、AT+UART?、AT+ADDR?
