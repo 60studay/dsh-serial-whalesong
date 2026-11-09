@@ -194,6 +194,7 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
             return                      # 监视模式 / 已经握着：不用管
         try:
             resolved = self.current_device()
+            self.loop.watch_mode = False       # 1.60：轻模式定时握口，回显要同步收
             self.loop.start(resolved["device"],
                             int(self.effective_cfg().get("baud") or 115200))
             self._autosend_hold = True
@@ -452,6 +453,8 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         self._viewer_seen = time.time()
         self.httpd.context = {
             "page": self._page,
+            "load_page": _load_page,
+            "static_stamp": self.static_stamp,
             "asset": _load_asset,
             "status": self.status,
             "get_theme": get_theme,
@@ -519,6 +522,23 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
                 pass
         return 0
 
+
+
+    def static_stamp(self):
+        """静态文件（index.html / app.js / app.css）的 mtime 指纹。
+
+        1.61：实例不再缓存 HTML，但**已经加载到浏览器里的 JS** 仍是旧的；
+        页面拿它和自己的加载时间比一下，就能提示"实例/页面已过期，刷一下"。
+        """
+        stamp = {}
+        web_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+        for name in ("index.html", "app.js", "app.css"):
+            path = os.path.join(web_dir, name)
+            try:
+                stamp[name] = os.path.getmtime(path)
+            except OSError:
+                stamp[name] = 0
+        return stamp
 
 def sys_flush():
     try:

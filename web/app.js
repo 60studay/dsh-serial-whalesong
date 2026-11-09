@@ -8,6 +8,8 @@ import { initPortPicker } from './js/pickport.js';
 import { initTheme } from './js/theme.js';
 import { initSidebar } from './js/sidebar.js';
 import { initTips } from './js/tips.js';
+import { createConsoleView } from './js/console-view.js';
+import { createFrameView } from './js/frames.js';
 
 /* 鲸歌网页逻辑 · 收发区 + 规则 + 启动（R2b 第一步之后剩下的部分）。
  * 基础设施在 js/core.js、配色和拖动在 js/layout.js，这里靠 import 用它们。
@@ -39,123 +41,25 @@ var countdownTimer = null;
   }
   var lastStatus = { control: null, port: null, owner: null, alerts: 0, running: null };
 
-  /* ── 回显区渲染 ─────────────────────────────────────────
-   *  两列网格：左列徽章、右列内容。TX 和 RX 走同一套排版，
-   *  所以"设备回的话"会自然对齐到"命令文字"的左边。
-   *
-   *  为什么不写 ">> 命令"：
-   *    用户反馈 >> 容易和串口数据里的字符混淆。改成靠颜色 + 徽章区分。
-   *  为什么回显要粘在一个块里：
-   *    串口是字节流，半包/粘包都常见；逐字节换行会把 "OK PO" / "NG" 拆成两行。
-   *  为什么用 grid 而不是给回显加 padding：
-   *    徽章宽度随字体/缩放变，写死 padding 迟早错位。
-   */
-  var MAX_CHARS = 300000;
-  var curRx = null;      // 当前正在追加的回显块（发完命令就置空，下一条回显新起一行）
+  // 回显区行渲染（1.61 搬进 js/console-view.js）：徽章/时间/粘包规则都在那里
+  var consoleView = createConsoleView({
+    consoleEl: consoleEl,
+    nowText: nowText,
+    getPort: function () { return curPort; }
+  });
+  var append = consoleView.append;
+  var appendNote = consoleView.appendNote;
+  var appendTx = consoleView.appendTx;
 
-  function trimConsole() {
-    while (consoleEl.textContent.length > MAX_CHARS && consoleEl.firstChild) {
-      consoleEl.removeChild(consoleEl.firstChild);
-    }
-  }
-
-  /** 建一行：左列徽章、中间正文、右列时间（像目录的页码，靠右对齐成一栏）。
-   *
-   *  时间只在这一行**新起**时打一次：同一条命令的回显接着写同一个 body，
-   *  不会每段回显都刷一个时间。
-   *  顺序是 徽章 → 正文 → 时间：时间放最右边，不切碎"谁发了什么"的阅读流。
-   */
-  function newRow(tagClass, tagText, ts) {
-    var row = document.createElement('div');
-    row.className = 'ln';
-    var tag = document.createElement('span');
-    tag.className = 'tag ' + tagClass;
-    tag.textContent = tagText;
-    // 口号可能很长（COM256 之类），徽章列是定宽的 → 截断 + 悬停看全名，
-    // 不许撑破布局（1.16 的验收里专门写了"长口名不撑破"）。
-    tag.title = tagText;
-    var body = document.createElement('span');
-    body.className = 'body';
-    var stamp = document.createElement('span');
-    stamp.className = 't';
-    stamp.textContent = nowText(ts);
-    row.appendChild(tag);
-    row.appendChild(body);
-    row.appendChild(stamp);
-    consoleEl.appendChild(row);
-    return body;
-  }
-
-  /** 设备徽章的文字：带上当前口号（1.16）。
-   *
-   *  为什么必须带口号：两块同型号板子（都是 CH340）时，`设备` 只说明"有东西回了"，
-   *  不说明是**哪块**回的。用户在诊断"我发给了谁"时，这一格是唯一的线索。
-   *  只影响**新起**的行：老行已经渲染好，不能回头改（那会让历史对不上）。
-   */
-  function devLabel() {
-    return curPort ? '设备 ' + curPort : '设备';
-  }
-
-  /** 追加回显：贴到当前回显行；没有就新起一行（设备徽章）。 */
-  function append(text, ts) {
-    if (!text) return;
-    if (!curRx) {
-      curRx = newRow('dev', devLabel(), ts);
-      curRx.classList.add('rx');
-    }
-    curRx.appendChild(document.createTextNode(text));
-    consoleEl.scrollTop = consoleEl.scrollHeight;
-    trimConsole();
-  }
-
-  /** 回显位置的淡色说明（1.14）。
-   *
-   *  为什么需要：一条命令发出去、回显是空的，这里有**两种完全不同**的情况：
-   *    ① 回显交给读线程了，几十毫秒后补上来（监视模式，正常）
-   *    ② 设备真的没回话（可能没插、命令不理、波特率不对）
-   *  以前两种情况都只剩一行空白，用户根本分不清，只能猜。
-   *  分不清的代价是：明明在正常工作，却去查线。
-   */
-  function appendNote(text) {
-    if (!text) return;
-    if (!curRx) {
-      curRx = newRow('dev', devLabel());
-      curRx.classList.add('rx');
-    }
-    var span = document.createElement('span');
-    span.className = 'note';
-    span.textContent = text;
-    curRx.appendChild(span);
-    consoleEl.scrollTop = consoleEl.scrollHeight;
-    trimConsole();
-  }
-
-  /* source → [徽章样式, 徽章文字]。web/manual 都是"人从网页点的"，算"我"。 */
-  var WHO = {
-    ai: ['ai', 'AI'],
-    human: ['human', '我'],
-    web: ['human', '我'],
-    manual: ['human', '我'],
-    auto: ['auto', '定时'],
-    timer: ['auto', '定时'],
-    watch: ['auto', '定时'],
-    rule: ['rule', '规则'],
-    external: ['bad', '外部'],
-    session: ['ai', '会话'],
-    cli: ['bad', '外部'],
-    dev: ['dev', '设备']
-  };
-
-  /** 打一行"谁发的 + 命令"，紧跟其后的回显会自动对齐到命令文字下面。 */
-  function appendTx(who, command, ts) {
-    var meta = WHO[who] || WHO.dev;
-    var body = newRow(meta[0], meta[1], ts);
-    body.classList.add('tx');
-    body.textContent = command;
-    curRx = null;         // 下一条回显要新起一行（设备徽章）
-    consoleEl.scrollTop = consoleEl.scrollHeight;
-    trimConsole();
-  }
+  // 帧渲染（1.58/1.59/1.61）：去重记忆、历史载入都在 js/frames.js
+  var frames = createFrameView({
+    appendTx: function (who, cmd, ts) { appendTx(who, cmd, ts); },
+    append: function (text, ts) { append(text, ts); },
+    appendNote: function (text) { appendNote(text); },
+    pushEvent: pushEvent,
+    api: api,
+    dispMode: function () { return dispMode; }
+  });
 
   /* ── 显示 ─────────────────────────────────────────────── */
   function renderPorts(data) {
@@ -369,6 +273,18 @@ var countdownTimer = null;
     controlUntil = (typeof data.control_until === 'number') ? data.control_until : null;  // 1.44
     controlBy = data.control_by || '';
     paintCountdown();
+    // 1.61：实例/页面过期就提醒一次（改完 HTML/JS 不重启实例也能知道）
+    (function () {
+      if (staleHintShown) return;
+      var stamp = data.static_stamp || {};
+      var loadedAt = (window.performance && performance.timeOrigin ? performance.timeOrigin : Date.now()) / 1000;
+      var newest = Math.max(0, Number(stamp["index.html"] || 0), Number(stamp["app.js"] || 0),
+        Number(stamp["app.css"] || 0));
+      if (newest > loadedAt + 1) {
+        staleHintShown = true;
+        pushEvent('warn', '网页文件更新过，你这个页面是旧的 —— 刷新一次（F5）就能用上');
+      }
+    })();
     curPort = data.port || '';
     setProbePorts(data.probe_ports);      // 1.27：探测表由后端给，前端不再写死
 
@@ -461,82 +377,26 @@ function renewWhileComposing() {
   // 也能各自看到同样的事件。以前 /poll 取走即清空，谁先轮询谁拿到。
   // 1.57：首屏用 -1 = "只从现在开始"，不要把整圈历史当成刚发生的事画出来。
 var frameCursor = -1;
-// 1.58：已经画过的帧（ts|tx）。live 和历史共用一份，
-// 于是"连点载入历史"不会把同一批帧追加多遍。
-var seenFrames = {};
+// 1.61：页面是不是旧的（网页静态文件在"我这次加载之后"被改过）
+var staleHintShown = false;
 var startedOnce = false;
 
   // 把一次 /poll 的结果画出来并推进游标。tick 和「读一次」共用一份，
   // 免得两处各写一遍、后来只改了一处（这类"一半对一半错"最费排查时间）。
-  function frameKey(f) {
-    return String(f && f.ts || '') + '|' + String(f && f.tx || '');
-  }
-
-  function frameSeen(f) {
-    var key = frameKey(f);
-    if (seenFrames[key]) return true;
-    seenFrames[key] = true;
-    return false;
-  }
-
-  function applyPoll(data) {
-    if (!data.ok) return;
-    if (typeof data.cursor === 'number' && data.cursor > frameCursor) {
-      frameCursor = data.cursor;
-    }
-    // 自动发送 / AI 发起的每一帧：先打来源+命令，再打回显（来源映射见 WHO）
-    (data.frames || []).forEach(function (f) {
-      if (frameSeen(f)) return;
-      appendTx(f.source || 'auto', f.tx, f.ts);
-      if (dispMode === 'hex') {
-        if (f.hex) append(f.hex + '\n');
-      } else if (f.rx) {
-        append(f.rx, f.ts);
-      } else if (!f.rx_pending) {
-        // 轻模式**同步**收发（手动发送走这条）：这一帧空了就是设备真没回话
-        appendNote('（设备没回话）');
-      }
-      // rx_pending（回显走读线程）这里**什么都不写**。
-      // 以前写"回显交给读线程，稍后补上"，但轻模式的回显是字节流，
-      // 不保证落回这一行 —— 对面 19:30 实测 28 条里绝大多数"补上"从没发生，
-      // 少数补上的还和提示粘成一句「（回显…）ERR CMD Z」。
-      // 承诺兑现不了就是假信息：宁可空着，等回显真的以「设备」行出现。
-    });
-    if (dispMode === 'hex') {
-      if (data.rx_hex) append(data.rx_hex + '\n');
-    } else if (data.rx_text) {
-      append(data.rx_text);
-    }
-  }
-
-  /* 载入历史（1.57）：默认不画旧帧（首屏从现在开始），想看才点。
-     时间戳用的是帧自己的 ts —— 老帧就该显示"当初"的时刻。 */
-  function loadHistory(limit) {
-    api('/poll?since=0').then(function (data) {
-      if (!data || !data.ok) return;
-      var frames = (data.frames || []).slice(-(limit || 50));
-      if (!frames.length) { pushEvent('', '没有历史帧'); return; }
-      var added = 0;
-      frames.forEach(function (f) {
-        if (frameSeen(f)) return;             // 1.58：连点不重复
-        added += 1;
-        appendTx(f.source || 'auto', f.tx, f.ts);
-        if (dispMode === 'hex') { if (f.hex) append(f.hex + '\n', f.ts); }
-        else if (f.rx) append(f.rx, f.ts);
-      });
-      pushEvent('', added
-        ? '已载入 ' + added + ' 条历史（重复的已跳过）'
-        : '没有新的历史可载入（都已在上面）');
-    });
-  }
-
   function tick() {
     // startedOnce 之前 frameCursor 是 -1 → 只取从现在起的帧；回来后服务器给 cursor
 
     api('/status').then(function (data) {
       if (data.ok) renderStatus(data);
     });
-    api('/poll?since=' + frameCursor).then(applyPoll);
+    api('/poll?since=' + frameCursor).then(function (data) {
+      // 游标推进必须留在这里（1.61 把渲染搬进 frames.js 时丢了这段，
+      // 于是 frameCursor 永远是 -1、每轮都"只从现在开始"→ 一条都不显示）
+      if (data && typeof data.cursor === 'number' && data.cursor > frameCursor) {
+        frameCursor = data.cursor;
+      }
+      frames.applyPoll(data);
+    });
   }
 
   function startPolling() {
@@ -588,7 +448,7 @@ var startedOnce = false;
   $('btnReadOnce').addEventListener('click', function () {
     api('/poll?force=1&since=' + frameCursor).then(function (data) {
       if (!data.ok) { pushEvent('bad', '读取失败：' + errText(data.error)); return; }
-      applyPoll(data);
+      frames.applyPoll(data);
       pushEvent('', '手动读取一帧（' + (data.bytes || 0) + ' 字节）');
     });
   });
@@ -596,13 +456,16 @@ var startedOnce = false;
   // 清空：回显 + 状态轨道 + 告警，一起清。
   // 用户测试时告警一直弹，"清空"只清回显等于没清（14:35 需求 3）。
   if ($('btnHistory')) {
-    $('btnHistory').addEventListener('click', function () { loadHistory(50); });
+    $('btnHistory').addEventListener('click', function () { frames.loadHistory(50); });
   }
 
   $('btnClear').addEventListener('click', function () {
     consoleEl.textContent = '';
     consoleEl.scrollTop = 0;
-    curRx = null;
+    consoleView.resetRx();
+    // 1.59：清空 = 忘掉"已经画过哪些帧"，否则再点「载入历史」会被去重挡成
+    // "没有新的历史可载入"（用户实测：清空后载入历史什么都不出来）。
+    frames.reset();
     $('timelineList').textContent = '';
     $('alertbar').classList.remove('show');
     post('/alerts/clear', {}).then(function (data) {

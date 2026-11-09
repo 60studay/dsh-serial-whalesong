@@ -81,6 +81,8 @@ class StatusMixin(object):
             "probe_ports": self.probe_ports(),
             # 解析不出串口时，把"现在插着哪些"和"需要人选一个"直接告诉前端 ——
             # 让页面**问人**，而不是悄悄锁在一个打不开的口上（用户 22:5x）。
+            # 1.61：静态文件指纹（页面拿它和自己加载时间比，判断"我是不是旧的"）
+            "static_stamp": self.static_stamp(),
             "port_choices": self.port_choices(),
             "needs_port_choice": None,          # 等解析结果出来再填（见下）
         }

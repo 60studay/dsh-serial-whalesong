@@ -49,6 +49,8 @@ class WatchLoop(object):
         # 以前这个属性只在 WebServer 上，读线程读 self._manual_until 直接 AttributeError
         # —— 第一条回显就把读线程干掉，之后"只有 TX 没有 RX"（1.31 的根因）。
         self._manual_until = 0.0
+        # 1.60：这个口是"监视模式"还是"轻模式定时发送握着"——决定回显怎么拿。
+        self.watch_mode = False
         # 判定统一交给 RuleChecker（与管家共用同一份逻辑，不再各写一份）
         self.checker = RuleChecker(scene, state, logger, send_action=self._send_rule)
 
@@ -146,6 +148,22 @@ class WatchLoop(object):
             # **但帧上必须标出来**：以前这里什么都不标，于是界面上看起来像
             # "发了、设备没回"，和"真的没回"分不开——排查时会把两种完全不同的
             # 情况混成一个（这次就是：命令可能已经到了 COM7，只是帧里没回显）。
+            if not getattr(self, "watch_mode", False):
+                # 1.60：轻模式下这条口是"定时发送自己握着"（1.8 尾巴），**没有读线程会事后补回显**，
+                # 标 pending 等于永远空。这里像 transact 那样同步收一次。
+                raw = self._collect_echo(
+                    max(0.8, int(cfg.get("wait_first_byte_ms") or 1500) / 1000.0),
+                    max(0.02, int(cfg.get("timeout_read_ms") or 200) / 1000.0))
+                text = raw.decode("utf-8", errors="replace")
+                if text:
+                    self.logger.append("RX", text)
+                self._push_frame(command, text, " ".join("%02X" % b for b in raw),
+                                 len(raw), source)
+                if raw:
+                    self.no_response_streak = 0
+                else:
+                    self.no_response_streak += 1
+                return text
             frame = self._push_frame(command, "", "", 0, source)
             if isinstance(frame, dict):
                 frame["rx_pending"] = True
@@ -173,6 +191,30 @@ class WatchLoop(object):
         判定层不该知道网页徽章长什么样。
         """
         return self.send_raw(command, source="rule")
+
+    def _collect_echo(self, timeout_s, silence_s):
+        """从读线程的缓冲里凑一条回显（先等首字节，再等到静默）。
+
+        和 web/serial.py 里那份同一个思路：**只读缓冲，不动句柄**。
+        轻模式定时发送自己握着口，没有 transact 可用，只能这样拿回显。
+        """
+        out = b""
+        deadline = time.time() + timeout_s
+        while time.time() < deadline and not out:
+            out += self.take()
+            if not out:
+                time.sleep(0.01)
+        if not out:
+            return b""
+        quiet_at = time.time() + silence_s
+        while time.time() < quiet_at:
+            chunk = self.take()
+            if chunk:
+                out += chunk
+                quiet_at = time.time() + silence_s
+            else:
+                time.sleep(0.01)
+        return out
 
     def _push_frame(self, tx, rx, rx_hex, nbytes, source="auto"):
         """记一帧给网页显示。返回这一帧本身，调用方可以补字段（比如 rx_pending）。"""

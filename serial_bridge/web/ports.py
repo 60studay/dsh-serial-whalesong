@@ -56,6 +56,7 @@ class PortMixin(object):
         # 真重建：watch 模式先停旧口再按新参数开
         if self.mode == "watch":
             resolved = self.current_device()
+            self.loop.watch_mode = True
             self.loop.start(resolved["device"], int(self.effective_cfg().get("baud") or 115200))
         else:
             # 轻模式**不占口**，所以这里绝不能真去 open 一下做"验证"。

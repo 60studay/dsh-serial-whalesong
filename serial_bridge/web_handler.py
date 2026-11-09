@@ -62,7 +62,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         try:
             if path in ("/", "/index.html"):
-                html = self.ctx["page"]
+                # 1.61：**每次请求现读** index.html。以前实例启动时缓存一份，
+                # 于是"用户开着的老实例"永远看不到新加的按钮（用户实测：
+                # 新加的「载入历史」在他页面上根本没有）。HTML 只有十几 KB，读盘无所谓。
+                html = self.ctx.get("load_page")() if self.ctx.get("load_page") else self.ctx["page"]
                 return self._send(200, html, "text/html; charset=utf-8")
             if path in ("/app.css", "/app.js", "/brand.png", "/custom.css") or (
                     path.startswith("/js/") and path.endswith(".js")) or (
