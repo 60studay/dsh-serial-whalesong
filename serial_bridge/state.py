@@ -186,14 +186,12 @@ class SharedState(object):
             current["since"] = _now()
             current["changed_by"] = changed_by
             current["note"] = note
-            # 1.44：人接管分两类 —— 显式点击（永久）/ 发了一条命令（到点自动归还）
+            # 1.44：走迁移表进 human 的，一律按"临时接管"处理（带倒计时）；
+            # 显式点击走 force_state(permanent=True)，不经过这里。
             if new_state != STATE_HUMAN:
                 current["control_until"] = None
-            elif permanent:
-                current["control_until"] = None
-            elif until is not None:
-                current["control_until"] = float(until)
-            # 其它情况保持原值（比如 paused 恢复等）
+            else:
+                current["control_until"] = _now() + DEFAULT_HUMAN_HOLD_S
             self._write(current)
             # 同一个物理口只有**一套**控制权（用户 23:1x 拍板 A 方案）
             self._sync_same_port(current)
