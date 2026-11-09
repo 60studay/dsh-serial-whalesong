@@ -212,6 +212,17 @@ def resolve_port(cfg):
     wanted_vid_pid = str(cfg.get("match_vid_pid") or "").strip()
     wanted_serial = str(cfg.get("match_serial") or "").strip()
 
+    # 0) **页面上明确选的口，优先级最高**（用户 11-09 现场：在页面选了 COM3，
+    #    场景配置写着 match=CH340，结果报"没找到匹配的 CH340" —— 人已经指名道姓了，
+    #    再用匹配规则去否决他，就是"选了没用"）。
+    #    仍然先确认这个口号现在真的存在；不存在就走下面的匹配/报错流程。
+    if cfg.get("_override_com"):
+        pinned_com = str(cfg.get("_override_com")).strip().upper()
+        pinned = [item for item in ports
+                  if str(item.get("device") or "").strip().upper() == pinned_com]
+        if len(pinned) == 1:
+            return _resolved(pinned[0], "override", "")
+
     # 1) VID:PID 精确匹配
     if wanted_vid_pid:
         hits = _match_by_vid_pid(ports, wanted_vid_pid)

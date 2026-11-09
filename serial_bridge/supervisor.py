@@ -99,6 +99,9 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
         cfg = dict(self.scene.cfg)
         if self.override_com:
             cfg["com"] = self.override_com
+            # 单独标一个内部字段：resolve_port 见到它就**优先用这个口**，
+            # 不被场景的 match=CH340 之类否决（人已经指名道姓了）
+            cfg["_override_com"] = self.override_com
         if self.override_baud:
             cfg["baud"] = self.override_baud
         return cfg

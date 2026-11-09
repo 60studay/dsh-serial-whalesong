@@ -68,6 +68,9 @@ class SerialMixin(object):
                     "blame": "AI 尝试发送「%s」被拒（控制权在 %s）"
                              % (command[:40], current.get("state")),
                 })
+                # 收发区也要留一行：用户盯的是那块，只有状态轨道不够（对面 1.33 判据 3）
+                self.loop._push_frame(command, "", "", 0,
+                                      source if source != "web" else "external")
                 raise BridgeError(
                     "control_blocked",
                     "控制权是 %s，AI 不能发命令。" % current.get("state"),
@@ -136,12 +139,21 @@ class SerialMixin(object):
 
         resolved = self.current_device()
         cfg = self.effective_cfg()
+        # 从这里往下是"真的动了硬件"：失败也必须在页面上留一行（1.33 判据 3）
         # Bug 11：hex 模式必须把解析出来的原始字节传下去，
         # 否则 transact 会把 "AA 55" 当成 5 个 ASCII 字符发出去。
-        with self.loop.port_lock:
-            result = serial_io.transact(
-                cfg, resolved["device"], command,
-                raw_bytes=payload_bytes if mode == "hex" else None)
+        try:
+            with self.loop.port_lock:
+                result = serial_io.transact(
+                    cfg, resolved["device"], command,
+                    raw_bytes=payload_bytes if mode == "hex" else None)
+        except BridgeError:
+            # 失败帧：只在"真的尝试过"之后才推（换行/占用的错误也得让用户看见）
+            frame = self.loop._push_frame(
+                command, "", "", 0, source if source != "web" else "external")
+            if isinstance(frame, dict):
+                frame["note"] = "发送失败"
+            raise
         self.logger.append("TX", command)
         if result["rx_text"]:
             self.logger.append("RX", result["rx_text"])
