@@ -170,8 +170,32 @@ def _warn_page_not_seeing(paths, scene_name):
 
 
 def cmd_send(paths, args):
-    scene = _scene(paths, args.scene)
-    cfg = scene.cfg
+    # 1.35：**场景可省**。只给 --com 时造一个临时场景，用完就丢 ——
+    # 场景是"长期配置"，不该是"入场券"（对面 14:30 的判据）。
+    adhoc_com = str(getattr(args, "com", "") or "").strip()
+    adhoc_baud = int(getattr(args, "baud", 0) or 0)
+    if args.scene:
+        scene = _scene(paths, args.scene)
+    elif adhoc_com:
+        from .config import Scene
+        scene = Scene("(临时)", "", {
+            "com": adhoc_com, "baud": adhoc_baud or 115200,
+            "newline": "\r\n", "match": "", "match_vid_pid": "",
+        })
+    else:
+        raise BridgeError(
+            "scene_missing",
+            "要么给 scene（用 serial_list 看有哪些），要么给 com（直接说哪个口）。",
+            hint=["serial_list 看当前插着哪些口",
+                  "例如 serial_send(com=\"COM10\", text=\"AT\")"],
+        )
+    cfg = dict(scene.cfg)
+    # 1.38：临时覆盖 com/baud，**不写回配置**
+    if adhoc_com:
+        cfg["com"] = adhoc_com
+        cfg["_override_com"] = adhoc_com
+    if adhoc_baud:
+        cfg["baud"] = adhoc_baud
     state = SharedState(paths["runtime_root"], scene.name)
     logger = Logger(paths["log_root"], scene.name)
 
@@ -375,7 +399,10 @@ def build_parser():
     cli_query.add_parsers(sub)
 
     send = sub.add_parser("send")
-    send.add_argument("--scene", required=True)
+    send.add_argument("--scene", default="",
+                      help="场景名；**可省** —— 只给 --com 也能发（1.35）")
+    send.add_argument("--com", default="", help="临时指定串口，不写回配置（1.38）")
+    send.add_argument("--baud", type=int, default=0, help="临时指定波特率，不写回配置（1.38）")
     send.add_argument("--command", required=True)
     send.add_argument("--as", dest="actor", default="human", choices=["human", "ai"])
     send.add_argument("--auto", action="store_true", help="按自动命令处理，强制白名单检查")

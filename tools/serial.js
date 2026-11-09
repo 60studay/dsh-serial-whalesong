@@ -9,9 +9,11 @@ export function register({ register, runCli, sceneParam, logRoot }) {
 register({
   name: 'serial_list',
   description:
-    'List the serial ports present on this machine (device, description, VID:PID) together with the ' +
-    'configured scenes and which port each scene would resolve to right now. Call this first: it tells ' +
-    'you which port to use and which scene names the other serial_* tools accept.',
+    'START HERE for any serial-port task. Lists the ports on this machine plus the scenes, and for each ' +
+    'port tells you whether it is ready to use. **Do not write your own pyserial / PowerShell SerialPort ' +
+    'script** — that costs 15+ lines, encoding and timeout pitfalls, and leaves no trace the user can see. ' +
+    'One serial_send call does the same thing and is logged to the page. If a scene cannot pick a port, ' +
+    'this answer still gives you the candidate ports — just pass `com` to serial_send.',
   parameters: {},
   output: {
     schema: {
@@ -82,9 +84,17 @@ register({
         for (const scene of value.scenes) {
           const head = `${scene.name}  →  ${scene.baud || '?'} 8N1`;
           if (!scene.resolved || scene.resolved.device === '') {
-            // 列表里只放一行原因；完整提示交给 serial_info，免得刷屏
+            // 1.34a：**不再判死**。场景只是"长期配置"，不是入场券 ——
+            // 解析不出来时把候选口列出来，并给出下一条能直接执行的调用。
             const reason = String(scene.resolveError || '串口不可用').split('\n')[0];
-            lines.push(`  ${head}  ✕ ${reason}`);
+            const candidates = value.ports.map((port) => port.device);
+            lines.push(`  ${head}  ⚠ ${reason}`);
+            if (candidates.length > 0) {
+              lines.push(`      候选：${candidates.join(' / ')}`);
+              const guess = candidates.find((device) => /CH340|CH341|CP210|FT232/i.test(
+                value.ports.find((port) => port.device === device)?.description ?? '')) || candidates[0];
+              lines.push(`      直接可发：serial_send({com:"${guess}", command:"AT"})`);
+            }
             continue;
           }
           lines.push(`  ${head}  ${scene.resolved.device}（${scene.resolved.source}）` +
@@ -137,14 +147,24 @@ register({
 register({
   name: 'serial_send',
   description:
-    'Send one command line to the device of a scene and return whatever the device echoes back. ' +
-    'Requires control: it is refused unless the scene control state is "ai" — if it is refused, ' +
-    'ask the human to hand over control (web button [交给AI], or serial_control with action="ai"). ' +
-    'The port is opened only for this call and closed immediately, so a running serial assistant is not ' +
-    'blocked. The port is resolved by the scene config every call, so a changed COM number is handled ' +
-    'automatically. Motion commands make real hardware move — lift the wheels off the desk before driving.',
+    'Send one command to the device and return its reply. **Use this instead of writing a script.** ' +
+    '`scene` is optional: pass `com` (and `baud`) to talk to a port directly with no scene configured. ' +
+    'Both `com` and `baud` are per-call overrides — they do NOT modify the scene config, which makes ' +
+    'this the fast way to scan baud rates: send "AT" at 9600/19200/38400/57600/115200 until you get a reply. ' +
+    'Every call is logged and shown on the web page, so the human can see exactly what you did. ' +
+    'Refused unless control is "ai" (human can take it back any time). Motion commands make real ' +
+    'hardware move — lift the wheels off the desk before driving.',
   parameters: {
-    scene: { ...sceneParam, required: true },
+    scene: { ...sceneParam, required: false,
+      description: 'Scene name (optional). Omit it and give `com` to send without any scenario.' },
+    com: {
+      type: 'string',
+      description: 'Port to use for THIS call only, e.g. "COM10". Overrides the scene and is not saved.',
+    },
+    baud: {
+      type: 'integer',
+      description: 'Baud rate for THIS call only (e.g. 9600 / 115200). Overrides the scene and is not saved.',
+    },
     command: {
       type: 'string',
       required: true,
@@ -196,12 +216,21 @@ register({
   isConcurrencySafe: () => false,
   async execute(args) {
     const scene = String(args?.scene ?? '').trim();
-    const command = typeof args?.command === 'string' ? args.command : '';
-    if (!scene) throw new Error('scene 不能为空，先用 serial_list 看有哪些场景');
+    const com = String(args?.com ?? '').trim();
+    const baud = Number(args?.baud) || 0;
+    const command = typeof args?.command === 'string' ? args.command
+      : (typeof args?.text === 'string' ? args.text : '');
+    if (!scene && !com) {
+      throw new Error('要么给 scene（用 serial_list 看有哪些），要么给 com（例如 "COM10"）。'
+        + ' 例：serial_send({com:"COM10", text:"AT"})');
+    }
     if (command.trim() === '') throw new Error('command 不能为空');
 
     const wait = args?.wait !== false;      // 默认 true
-    const argv = ['send', '--scene', scene, '--command', command, '--as', 'ai'];
+    const argv = ['send', '--command', command, '--as', 'ai'];
+    if (scene) argv.push('--scene', scene);
+    if (com) argv.push('--com', com);
+    if (baud) argv.push('--baud', String(baud));
     if (!wait) argv.push('--no-wait');
     const data = await runCli(argv);
     return {

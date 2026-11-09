@@ -16,6 +16,48 @@ export const KIND_ADVICE = {
 };
 
 
+/* 1.36：失败时必须给出**下一条可执行调用**，不能只写"请联系管理员"。
+ * next() 返回一个对象：{ tool, args } —— args 拿去就能直接调。
+ * 优先用后端给的 candidates（真实口号），没有才用占位。
+ */
+function firstCom(error) {
+  const list = Array.isArray(error?.candidates) ? error.candidates : [];
+  for (const item of list) {
+    const device = typeof item === 'string' ? item : item?.device;
+    if (device) return device;
+  }
+  return '';
+}
+
+export function nextStep(kind, error) {
+  const com = firstCom(error);
+  switch (kind) {
+    case 'ambiguous_device':
+      return {
+        tool: 'serial_send',
+        args: com ? { com, command: 'AT' } : { com: 'COM1', command: 'AT' },
+        why: com ? `先给 ${com} 发一条 AT，看是不是你要的那个设备` : '给候选口各发一条 AT 试出来',
+      };
+    case 'no_device':
+      return { tool: 'serial_list', args: {}, why: '先看当前插着哪些口，再按 com 直接发' };
+    case 'no_response':
+      return {
+        tool: 'serial_send',
+        args: { ...(com ? { com } : {}), baud: 9600, command: 'AT' },
+        why: '波特率可能不对：用 baud 覆盖逐个试 9600 → 115200（不改配置）',
+      };
+    case 'port_busy':
+      return { tool: 'serial_status', args: {}, why: '看谁在占口（网页监视模式 / 串口助手），关掉再发' };
+    case 'control_blocked':
+      return { tool: 'serial_control', args: { action: 'ai' }, why: '先把控制权交给 AI' };
+    case 'scene_missing':
+      return { tool: 'serial_list', args: {}, why: '看有哪些场景；也可以不给场景，直接给 com' };
+    default:
+      return null;
+  }
+}
+
+
 export function renderError(kind, error, fallback) {
   const lines = [];
   const advice = KIND_ADVICE[kind];
@@ -33,6 +75,12 @@ export function renderError(kind, error, fallback) {
     }
   }
   if (advice) lines.push(`下一步：${advice}`);
+  const next = nextStep(kind, error);
+  if (next) {
+    const argText = JSON.stringify(next.args);
+    lines.push(`可直接调：${next.tool}(${argText})`);
+    if (next.why) lines.push(`为什么：${next.why}`);
+  }
   if (error?.detail) lines.push(`细节：${error.detail}`);
   return lines.join('\n');
 }
