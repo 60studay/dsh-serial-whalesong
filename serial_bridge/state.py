@@ -54,7 +54,14 @@ DEFAULT_STATE = {
     # 放在状态文件里，所以进程重启后仍然是它；空串 = 回到 config 的匹配规则。
     "override_com": "",
     "override_baud": 0,
+    # 1.44：人接管到什么时候（epoch 秒）。
+    #   None  = 永久（点了「人类接管」）
+    #   数字  = 这个时刻之后自动回 ai（"人类发了条命令"的临时接管）
+    "control_until": None,
 }
+
+
+DEFAULT_HUMAN_HOLD_S = 10.0
 
 
 def _now():
@@ -179,6 +186,14 @@ class SharedState(object):
             current["since"] = _now()
             current["changed_by"] = changed_by
             current["note"] = note
+            # 1.44：人接管分两类 —— 显式点击（永久）/ 发了一条命令（到点自动归还）
+            if new_state != STATE_HUMAN:
+                current["control_until"] = None
+            elif permanent:
+                current["control_until"] = None
+            elif until is not None:
+                current["control_until"] = float(until)
+            # 其它情况保持原值（比如 paused 恢复等）
             self._write(current)
             # 同一个物理口只有**一套**控制权（用户 23:1x 拍板 A 方案）
             self._sync_same_port(current)
@@ -186,7 +201,8 @@ class SharedState(object):
         finally:
             self._release()
 
-    def force_state(self, new_state, changed_by="unknown", note=""):
+    def force_state(self, new_state, changed_by="unknown", note="",
+                    until=None, permanent=False):
         """绕过迁移表（用于"人类命令永远优先"这类安全规则）。"""
         if new_state not in VALID_STATES:
             raise ValueError("unknown state: %s" % new_state)
@@ -198,6 +214,13 @@ class SharedState(object):
             current["since"] = _now()
             current["changed_by"] = changed_by
             current["note"] = note
+            # 1.44：人接管分两类 —— 显式点击（永久）/ 发了一条命令（到点自动归还）
+            if new_state != STATE_HUMAN:
+                current["control_until"] = None
+            elif permanent:
+                current["control_until"] = None
+            elif until is not None:
+                current["control_until"] = float(until)
             self._write(current)
             self._sync_same_port(current)
             return current
@@ -260,6 +283,7 @@ class SharedState(object):
             return
         new_state = current.get("state")
         changed_by = current.get("changed_by") or "unknown"
+        until = current.get("control_until")
         note = current.get("note") or ""
         try:
             names = sorted(os.listdir(self.dir))
@@ -278,11 +302,16 @@ class SharedState(object):
                 continue
             if str(data.get("port") or "").strip() != device:
                 continue
-            if data.get("state") == new_state:
+            # 1.44：状态一样也要对齐**倒计时**（否则同口另一个场景还是永久/旧的 until，
+            # 判据 6 就挂了：三个场景必须共用一个 control_until）。
+            if (data.get("state") == new_state
+                    and data.get("control_until") == until
+                    and data.get("changed_by") == changed_by):
                 continue
             data["state"] = new_state
             data["since"] = _now()
             data["changed_by"] = changed_by
+            data["control_until"] = until
             data["note"] = (note + "（同口 %s 同步）" % device).strip()
             tmp = path + ".tmp%d.%d" % (os.getpid(), threading.get_ident())
             try:
@@ -347,6 +376,9 @@ class SharedState(object):
         页面和 serial_control 都能改。）
         """
         current = self.read()
+        # 1.44：每次门禁前先结算"人接管是否到期"，不依赖后台线程
+        if self.expire_human_command():
+            current = self.read()
         return current.get("state") == STATE_AI, current
 
     def ai_block_reason(self):
@@ -374,13 +406,59 @@ class SharedState(object):
         """网页进程周期性调用，证明"有人在场、会看告警"。"""
         self.update(presence=_now(), presence_by=source)
 
-    def note_human_command(self):
-        """人类命令永远优先：把状态拉回 human（如果当前是 ai）。"""
+    def note_human_command(self, hold_s=None):
+        """人类命令永远优先：把状态拉回 human，并**带上倒计时**（1.44）。
+
+        与「点人类接管」的区别：
+          · 发命令   → `changed_by=human-command`，`control_until=now+hold`，到点自动回 ai
+          · 点接管   → `changed_by=human-explicit`，`control_until=None`，只有点[交给AI]才回去
+        倒计时里再发命令 = **重置**为完整时长（不是累加）。
+        """
         current = self.read()
-        if current.get("state") == STATE_AI:
-            return self.force_state(STATE_HUMAN, "human-command",
-                                    "人类发了命令，AI 托管已自动让位")
-        return current
+        if current.get("state") == STATE_PAUSED:
+            return current                      # 暂停是明确意图，不受计时影响
+        seconds = DEFAULT_HUMAN_HOLD_S if hold_s is None else float(hold_s)
+        return self.force_state(
+            STATE_HUMAN, "human-command",
+            "人类发了命令，AI 托管已自动让位（%d 秒后归还）" % int(seconds),
+            until=_now() + seconds)
+
+    def renew_human_command(self, hold_s=None):
+        """倒计时中人类还在打字：把倒计时续回去（前端在组合输入时调用）。"""
+        current = self.read()
+        if current.get("state") != STATE_HUMAN:
+            return current
+        if current.get("changed_by") != "human-command":
+            return current                      # 显式接管是永久的，不续
+        seconds = DEFAULT_HUMAN_HOLD_S if hold_s is None else float(hold_s)
+        return self.force_state(STATE_HUMAN, "human-command",
+                                "人类还在输入，接管时间已重置",
+                                until=_now() + seconds)
+
+    def expire_human_command(self):
+        """临时接管到点了：回 ai 并留痕。返回是否真的发生了。"""
+        current = self.read()
+        if current.get("state") != STATE_HUMAN:
+            return False
+        until = current.get("control_until")
+        if until is None:
+            return False                        # 永久接管
+        try:
+            until = float(until)
+        except (TypeError, ValueError):
+            return False
+        if _now() < until:
+            return False
+        self.force_state(STATE_AI, "human-expired",
+                         "人类接管已到期（%d 秒），控制权回到 AI" % int(DEFAULT_HUMAN_HOLD_S))
+        try:
+            self.append_alert({
+                "rule": "控制权到期",
+                "blame": "人类接管已到期，控制权自动回到 AI",
+            })
+        except Exception:
+            pass
+        return True
 
     # ── 告警 ────────────────────────────────────────────────────────────────
     def append_alert(self, alert):

@@ -164,7 +164,18 @@ def cmd_control(paths, args):
         )
 
     try:
-        current = state.set_state(target, args.by, label)
+        # 1.44：两条人接管的路要**分开记** ——
+        #   human（点按钮）  → human-explicit，control_until=None（永久）
+        #   ai（交还）       → 清掉计时
+        #   renew（还在打字）→ 把倒计时续回完整时长
+        if args.action == "human":
+            current = state.force_state(
+                STATE_HUMAN, "human-explicit",
+                "人类点击了接管（不自动恢复）", permanent=True)
+        elif args.action == "ai":
+            current = state.force_state(STATE_AI, args.by or "cli", label)
+        else:
+            current = state.set_state(target, args.by, label)
     except ValueError as exc:
         raise BridgeError("control_blocked", "状态迁移被拒绝（%s）。" % exc)
     data = {"scene": scene.name, "state": current, "self_granted": self_granted}
@@ -195,5 +206,5 @@ def add_parsers(sub):
     control = sub.add_parser("control")
     control.add_argument("--scene", required=True)
     control.add_argument("--action", required=True,
-                         choices=["ai", "pause", "resume", "human"])
+                         choices=["ai", "pause", "resume", "human", "renew"])
     control.add_argument("--by", default="cli", help="谁改的（记在状态文件里）")

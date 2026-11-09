@@ -50,7 +50,7 @@ def main():
     try:
         print("\n[1] 没写过 = 开（用户 11-09 定的默认值）")
         check("默认 auto_open_browser=True",
-              uiprefs.read_prefs(paths) == {"auto_open_browser": True},
+              uiprefs.read_prefs(paths)["auto_open_browser"] is True,
               uiprefs.read_prefs(paths))
 
         print("\n[2] 写 → 读回")
@@ -65,7 +65,7 @@ def main():
         print("\n[3] 原子写：落盘是完整 JSON、不留临时文件")
         with io.open(uiprefs.prefs_path(paths), encoding="utf-8") as handle:
             on_disk = json.load(handle)
-        check("JSON 可解析且内容对", on_disk == {"auto_open_browser": True}, on_disk)
+        check("JSON 可解析且内容对", on_disk.get("auto_open_browser") is True, on_disk)
         leftovers = [n for n in os.listdir(root) if n.endswith(".tmp")]
         check("没有 .tmp 残留", not leftovers, leftovers)
 
@@ -91,12 +91,12 @@ def main():
         print("\n[6] 文件被手改坏 → 回默认，不崩")
         with io.open(uiprefs.prefs_path(paths), "w", encoding="utf-8") as handle:
             handle.write("{ 半个 json")
-        check("坏 JSON → 回默认（开）", uiprefs.read_prefs(paths) == {"auto_open_browser": True})
+        check("坏 JSON → 回默认（开）", uiprefs.read_prefs(paths)["auto_open_browser"] is True)
         with io.open(uiprefs.prefs_path(paths), "w", encoding="utf-8") as handle:
             handle.write("[]")
-        check("非对象 → 回默认（开）", uiprefs.read_prefs(paths) == {"auto_open_browser": True})
+        check("非对象 → 回默认（开）", uiprefs.read_prefs(paths)["auto_open_browser"] is True)
         os.remove(uiprefs.prefs_path(paths))
-        check("文件不存在 → 回默认（开，新装用户也会弹页面）", uiprefs.read_prefs(paths) == {"auto_open_browser": True})
+        check("文件不存在 → 回默认（开，新装用户也会弹页面）", uiprefs.read_prefs(paths)["auto_open_browser"] is True)
 
         print("\n[7] 复用路径：页面在跑时弹不弹，看窗口还在不在（桩测试）")
         from serial_bridge import web_service

@@ -80,8 +80,9 @@ class SerialMixin(object):
                           "人类发任意命令会自动把控制权拉回 human"],
                 )
         else:
-            # 安全规则 1：人类命令永远优先，AI 托管立即让位
-            self.state.note_human_command()
+            # 安全规则 1：人类命令永远优先，AI 托管立即让位。
+            # 1.44：这是"临时接管"（带倒计时），不是永久 —— 时长可在偏好里改。
+            self.state.note_human_command(hold_s=self._human_hold_seconds())
 
         proxied = self._proxy_send_to_daemon(command, mode, actor, source)
         if proxied is not None:
@@ -232,6 +233,13 @@ class SerialMixin(object):
             pass
 
 
+    def _human_hold_seconds(self):
+        try:
+            from ..uiprefs import read_prefs
+            return float(read_prefs(self.paths).get("human_hold_seconds") or 10)
+        except Exception:
+            return 10.0
+
     def control(self, action, actor="human"):
         # 按"动作 + 源状态"校验：resume 的目标也是 ai，不能只看目标状态
         mapping = {
@@ -239,6 +247,8 @@ class SerialMixin(object):
             "pause": (STATE_PAUSED, "暂停AI", {STATE_AI}),
             "resume": (STATE_AI, "继续AI", {STATE_PAUSED}),
             "human": (STATE_HUMAN, "人类接管", {STATE_AI, STATE_PAUSED}),
+            # 1.44：页面上"人还在打字"时续期用；不是状态迁移，只重置倒计时
+            "renew": (STATE_HUMAN, "续期", {STATE_HUMAN}),
         }
         if action not in mapping:
             raise BridgeError("config", "未知的控制动作：%r" % action)
@@ -280,7 +290,18 @@ class SerialMixin(object):
                       "paused 可以[交给AI]/[继续AI]/[人类接管]"],
             )
         try:
-            current = self.state.set_state(target, changed_by, label)
+            if action == "renew":
+                current = self.state.renew_human_command(
+                    hold_s=self._human_hold_seconds())
+            elif action == "human":
+                # 点按钮 = **永久**接管（判据 4）；发命令才是 10 秒临时接管
+                current = self.state.force_state(
+                    STATE_HUMAN, "human-explicit",
+                    "人类点击了[人类接管]（不自动恢复）", permanent=True)
+            elif action == "ai":
+                current = self.state.force_state(STATE_AI, changed_by, label)
+            else:
+                current = self.state.set_state(target, changed_by, label)
         except ValueError as exc:
             raise BridgeError("control_blocked", "状态迁移被拒绝（%s）。" % exc)
 

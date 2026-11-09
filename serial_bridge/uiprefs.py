@@ -25,8 +25,9 @@ PREFS_NAME = "ui-prefs.json"
 # 未知键直接报错，不静默吞掉：拼错了要立刻看得见（bili-watch 吃过静默丢 patch 的亏）。
 # 默认 **开**（用户 2026-11-09 决定）：用串口就顺手把网页带上，看得见发生了什么。
 # 想要安静的人可以在设置页关掉；关过之后这个文件里就是 False，永远优先于默认值。
-DEFAULTS = {"auto_open_browser": True}
+DEFAULTS = {"auto_open_browser": True, "human_hold_seconds": 10}
 _BOOL_KEYS = frozenset(["auto_open_browser"])
+_INT_KEYS = frozenset(["human_hold_seconds"])
 
 
 def prefs_path(paths):

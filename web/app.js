@@ -24,6 +24,9 @@ import { initTips } from './js/tips.js';
   var pollTimer = null;
   var lastAlertsRaw = [];
 var lastChoicePrompt = '';
+var controlUntil = null;      // 1.44：人接管到什么时候（epoch 秒）
+var controlBy = '';
+var countdownTimer = null;
 
   /* ── 告警条关闭状态（刷新后仍然生效）── */
   var ALERT_DISMISS_KEY = 'sb.alertDismissedTs';
@@ -362,6 +365,9 @@ var lastChoicePrompt = '';
                    alerts: alertCount, running: runNow };
 
     lastState = data;
+    controlUntil = (typeof data.control_until === 'number') ? data.control_until : null;  // 1.44
+    controlBy = data.control_by || '';
+    paintCountdown();
     curPort = data.port || '';
     setProbePorts(data.probe_ports);      // 1.27：探测表由后端给，前端不再写死
 
@@ -399,7 +405,42 @@ var lastChoicePrompt = '';
     document.title = (pageDead ? '[已失效] ' : '') + parts.join(' · ');
   }
 
-  /* ── 轮询 ─────────────────────────────────────────────── */
+  /* ── 控制权倒计时（1.44）───────────────────────────────
+   两种人接管：
+     · 发了一条命令 → 10 秒后自动回 ai（显示"剩 N 秒"）
+     · 点了「人类接管」→ 永久（显示"不自动恢复"）
+   只改文字，不触发轮询；时间到了由后端下一次 /status 翻转，这里只是别显示成负数。 */
+function paintCountdown() {
+  var label = document.getElementById('controlstate');
+  if (!label) return;
+  var base = STATE_LABEL[lastState && lastState.control] || (lastState && lastState.control) || '';
+  if (!controlUntil) {
+    label.textContent = controlBy === 'human-explicit' || controlBy === 'human'
+      ? '人类控制（不自动恢复）' : base;
+    return;
+  }
+  var left = Math.max(0, Math.round(controlUntil - Date.now() / 1000));
+  if (left <= 0) { label.textContent = base; return; }
+  label.textContent = '人类控制（剩 ' + left + ' 秒）';
+}
+
+function startCountdown() {
+  if (countdownTimer) return;
+  countdownTimer = setInterval(paintCountdown, 1000);
+}
+
+/* 输入框有字且聚焦 → 续期，别让人"打一半被 AI 插队"（判据 8）。
+   只在真的会过期（human-command）时续，显式接管是永久的。 */
+function renewWhileComposing() {
+  var box = document.getElementById('cmd');
+  if (!box) return;
+  var composing = document.activeElement === box && box.value.trim() !== '';
+  if (!composing || !controlUntil) return;
+  if (controlBy !== 'human-command') return;
+  post('/control', { action: 'renew', actor: 'human' }).catch(function () {});
+}
+
+/* ── 轮询 ─────────────────────────────────────────────── */
   // 页面刚做过一次"选口 / 回到自动识别"：下一次重建下拉框要用这个值。
   // 不能用 lastState.port —— 它要等下一次 /status 轮询才更新，最多晚 700ms，
   // 于是下拉框会把刚选好的项又改回去（用户看到"点了又跳回旧口"）。
@@ -584,6 +625,8 @@ var lastChoicePrompt = '';
     loadRules();
     tick();
     startPolling();
+    startCountdown();
+    setInterval(renewWhileComposing, 4000);
     startViewerHeartbeat({ onDead: markPageDead });
     initTheme();
     startChannel();

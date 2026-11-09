@@ -37,6 +37,11 @@ class StatusMixin(object):
 
 
     def status(self):
+        # 1.44：有倒计时就顺手结算（不然页面看到的是"已经过期但还没翻转"的旧状态）
+        try:
+            self.state.expire_human_command()
+        except Exception:
+            pass
         current = self.state.read()
         watch_cfg = self.effective_watch()
         autosend_alive = self._autosend_thread is not None and self._autosend_thread.is_alive()
@@ -60,6 +65,10 @@ class StatusMixin(object):
             "avg_gap_ms": self.autosend_stats.get("avg_gap_ms", 0),
             "autosend_error": self.autosend_stats.get("last_error", ""),
             "watch_error": self.loop.last_error,
+            # 1.44：人接管的倒计时（epoch 秒；None=永久）。前端按它本地算"还剩几秒"，
+            # 不额外轮询。返回前先结算一次到期，保证字段和 state 一致。
+            "control_until": current.get("control_until"),
+            "control_by": current.get("changed_by") or "",
             "alerts": self.state.read_alerts(5),
             "port": current.get("port") or "",
             "baud": current.get("baud") or int(self.effective_cfg().get("baud") or 0),
