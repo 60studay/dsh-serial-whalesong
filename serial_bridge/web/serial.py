@@ -142,11 +142,20 @@ class SerialMixin(object):
         # 从这里往下是"真的动了硬件"：失败也必须在页面上留一行（1.33 判据 3）
         # Bug 11：hex 模式必须把解析出来的原始字节传下去，
         # 否则 transact 会把 "AA 55" 当成 5 个 ASCII 字符发出去。
+        # 拿不到锁就**说清楚**，不要无限等：一个卡死的发送（比如串口在但对面不说话、
+        # 驱动把 open 挂住）会把 port_lock 一直握着，后面每个命令都排队到天荒地老
+        # —— 用户看到的是"整页发不动"，我 11-09 现场就撞上了。
+        if not self.loop.port_lock.acquire(timeout=15):
+            raise BridgeError(
+                "port_busy",
+                "上一个命令还没结束（超过 15 秒），这条没发出去。",
+                hint=["等一下再试", "如果串口换了/拔了，点[回到自动识别]重新找口",
+                      "实在卡住就点[暂停并释放串口]让它放开"],
+            )
         try:
-            with self.loop.port_lock:
-                result = serial_io.transact(
-                    cfg, resolved["device"], command,
-                    raw_bytes=payload_bytes if mode == "hex" else None)
+            result = serial_io.transact(
+                cfg, resolved["device"], command,
+                raw_bytes=payload_bytes if mode == "hex" else None)
         except BridgeError:
             # 失败帧：只在"真的尝试过"之后才推（换行/占用的错误也得让用户看见）
             frame = self.loop._push_frame(
@@ -154,6 +163,8 @@ class SerialMixin(object):
             if isinstance(frame, dict):
                 frame["note"] = "发送失败"
             raise
+        finally:
+            self.loop.port_lock.release()
         self.logger.append("TX", command)
         if result["rx_text"]:
             self.logger.append("RX", result["rx_text"])
