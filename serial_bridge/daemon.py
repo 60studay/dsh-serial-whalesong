@@ -50,6 +50,32 @@ SEND_QUIET_MS = 25
 
 
 # ── 进程内状态 ──────────────────────────────────────────────────────────────
+
+def _push_page_frame(paths, scene_name, tx, rx, source="ai"):
+    """把管家这一条投进同场景网页的帧流（1.52）。
+
+    管家是独立进程，页面看不到它的收发；而"人开着页面却什么都看不到"
+    正是用户报过的坑。网页没开就静默跳过，绝不影响收发。
+    """
+    try:
+        import json as _json
+        import urllib.request
+        path = os.path.join(paths["runtime_root"], "state",
+                            "%s.web.json" % _safe_name(scene_name))
+        with open(path, encoding="utf-8") as handle:
+            url = str(_json.load(handle).get("url") or "")
+        if not url:
+            return
+        payload = _json.dumps({"tx": tx, "rx": rx, "source": source},
+                              ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(
+            url.rstrip("/") + "/frames", data=payload,
+            headers={"Content-Type": "application/json; charset=utf-8"})
+        urllib.request.urlopen(request, timeout=2).close()
+    except Exception:
+        pass
+
+
 class Daemon(object):
     def __init__(self, paths, scene_name, http_port=DEFAULT_PORT, idle_s=DEFAULT_IDLE_S):
         self.paths = paths
@@ -172,11 +198,28 @@ class Daemon(object):
     # ── 发 ──────────────────────────────────────────────────────────────────
     def send(self, text, mode="text", actor="human", wait_ms=None):
         self.touch()
+        # 1.50：先结算"人接管到期"，否则管家看到的还是过期前的 human
+        try:
+            self.state.expire_human_command()
+        except Exception:
+            pass
         current = self.state.read()
         control = current.get("state") or "ai"
         if control == STATE_PAUSED:
             raise BridgeError("control_blocked", "控制权是 paused（已暂停），现在不能发命令。",
                               hint=["在网页点[继续AI]，或 human 接管后由人操作"])
+        if actor != "ai":
+            # 1.44：人类发命令 = 临时接管（带倒计时）。管家这条路径以前**完全没管控制权**，
+            # 于是"人从 CLI/工具发一条"不会让 AI 让位 —— 和网页行为不一致。
+            try:
+                from .uiprefs import read_prefs
+                hold = float(read_prefs(self.paths).get("human_hold_seconds") or 10)
+            except Exception:
+                hold = 10.0
+            self.state.note_human_command(hold_s=hold)
+            current = self.state.read()
+            control = current.get("state") or "ai"
+
         if actor == "ai":
             allowed, _ = self.state.check_ai_allowed()
             if not allowed:
@@ -210,6 +253,8 @@ class Daemon(object):
         # wait_ms=0 表示"发完就走"：批量下命令时不必每条都等设备回话。
         # 回显仍然会被读线程收进 buffer，之后用 /poll 或 serial_read 取。
         if wait_ms <= 0:
+            _push_page_frame(self.paths, self.scene.name, text, "",
+                             "ai" if actor == "ai" else "session")
             return {
                 "scene": self.scene.name,
                 "command": text,
@@ -251,6 +296,9 @@ class Daemon(object):
             self.no_response_streak += 1
         if data:
             self.logger.append("RX", data.decode("utf-8", errors="replace"))
+        _push_page_frame(self.paths, self.scene.name, text,
+                         data.decode("utf-8", errors="replace"),
+                         "ai" if actor == "ai" else "session")
         return {
             "scene": self.scene.name,
             "command": text,
@@ -503,12 +551,14 @@ def ensure_started(paths, scene_name, port=None, idle_s=DEFAULT_IDLE_S, wait_s=6
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(
         [package_root] + [p for p in [env.get("PYTHONPATH")] if p])
+    # 1.51：Windows 上不加 CREATE_NO_WINDOW 会弹一个空控制台窗口（桌面端尤其明显）
+    flags = 0x08000000 if sys.platform == "win32" else 0     # CREATE_NO_WINDOW
     subprocess.Popen(
         [sys.executable, "-m", "serial_bridge.daemon",
          "--scene", scene_name, "--port", str(port), "--idle", str(idle_s)],
         cwd=package_root, env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=True)
+        start_new_session=True, creationflags=flags)
     deadline = time.time() + wait_s
     while time.time() < deadline:
         time.sleep(0.15)
