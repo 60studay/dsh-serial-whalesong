@@ -175,6 +175,12 @@ register({
       description:
         'The command text without line ending; the scene config appends its own (default CRLF).',
     },
+    confirm: {
+      type: 'boolean',
+      description:
+        'Send even if the scene marks this command as dangerous (see the error `dangerous_command`). ' +
+        'Only set it when you are sure — e.g. recovering a module that is stuck.',
+    },
     autoBaud: {
       type: 'boolean',
       description:
@@ -266,6 +272,7 @@ register({
     if (scene) argv.push('--scene', scene);
     if (com) argv.push('--com', com);
     if (baud) argv.push('--baud', String(baud));
+    if (args?.confirm === true) argv.push('--yes');
     if (args?.autoBaud === true) argv.push('--auto-baud');
     if (args?.hold === true) argv.push('--hold');
     if (!wait) argv.push('--no-wait');

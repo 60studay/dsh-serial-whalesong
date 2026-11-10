@@ -3,16 +3,13 @@
   "match": "CH340",
   "baud": 115200,
   "newline": "\r\n",
-
   "//": "底盘会在 OK 之后约 400ms 才异步报 [FAULT] stall，窗口小于这个间隔就会漏掉故障。实测 2026-11-05。",
   "quiet_ms": 600,
-
   "no_response_hint": [
     "先发 AT：如果回 OK，说明主机还卡在自己的 AT 模式（没进透传）",
     "这时发 AT+RESET，然后【关闭串口】等 20 秒，让它自己连从机",
     "别只查波特率和接线——AT 模式没退出时，波特率再对也没用"
   ],
-
   "watch": {
     "send_enabled": false,
     "check_enabled": false,
@@ -21,22 +18,54 @@
     "interval_ms": 1000,
     "timeout_ms": 800,
     "max_consecutive_failures": 3,
-
     "rules": [
       {
         "name": "堵转保护触发",
-        "when": { "type": "contains", "value": "FAULT" },
-        "then": { "send": "R", "max_retries": 3 },
+        "when": {
+          "type": "contains",
+          "value": "FAULT"
+        },
+        "then": {
+          "send": "R",
+          "max_retries": 3
+        },
         "notify": true
       },
       {
         "name": "失联",
-        "when": { "type": "no_response", "consecutive": 3 },
-        "then": { "send": "X", "max_retries": 1 },
+        "when": {
+          "type": "no_response",
+          "consecutive": 3
+        },
+        "then": {
+          "send": "X",
+          "max_retries": 1
+        },
         "notify": true
       }
     ],
-
-    "allowed_auto_commands": ["R", "X", "Z", "P"]
-  }
+    "allowed_auto_commands": [
+      "R",
+      "X",
+      "Z",
+      "P"
+    ]
+  },
+  "dangerous_commands": [
+    {
+      "command": "AT+BIND",
+      "why": "兼容固件把 `+BIND=` 字面量直接写进绑定地址，查一次坏一次，主机从此永远 CONNECTING",
+      "safer": "要看绑定状态就物理断电重来，或从另一台设备确认配对；别用 AT+BIND? 查询"
+    },
+    {
+      "command": "AT+RESET",
+      "why": "复位后模块要自己重扫 20-30 秒，这期间任何 AT 都会打断它（会卡在 CONNECTING）",
+      "safer": "发完就关串口等 30 秒，别连续发命令"
+    },
+    {
+      "command": "AT+ORGL",
+      "why": "恢复出厂会把已配好的波特率/配对码/绑定全部清掉",
+      "safer": "先导出当前参数（AT+UART? / AT+PSWD? / AT+ADDR?）再决定"
+    }
+  ]
 }

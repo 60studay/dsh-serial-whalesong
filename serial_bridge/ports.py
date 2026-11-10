@@ -238,8 +238,10 @@ def resolve_port(cfg):
             if len(pinned) == 1:
                 return _resolved(pinned[0], "com", wanted_com)
             preferred = _prefer_last_port(cfg, hits)
-        if preferred is not None:
-            return _resolved(preferred, "preferred:last_port")
+            if preferred is not None:
+                return _resolved(preferred, "preferred:last_port")
+            raise _ambiguous(wanted_vid_pid, "match_vid_pid", hits, ports)
+        preferred = None
         raise _ambiguous(wanted_vid_pid, "match_vid_pid", hits, ports)
         raise BridgeError(
             "no_device",
@@ -262,9 +264,9 @@ def resolve_port(cfg):
             if len(pinned) == 1:
                 return _resolved(pinned[0], "com", wanted_com)
             preferred = _prefer_last_port(cfg, hits)
-        if preferred is not None:
-            return _resolved(preferred, "preferred:last_port")
-        raise _ambiguous(wanted_serial, "match_serial", hits, ports)
+            if preferred is not None:
+                return _resolved(preferred, "preferred:last_port")
+            raise _ambiguous(wanted_serial, "match_serial", hits, ports)
         raise BridgeError(
             "no_device",
             "没找到序列号为 %s 的串口设备。" % wanted_serial,
@@ -283,9 +285,9 @@ def resolve_port(cfg):
             if len(pinned) == 1:
                 return _resolved(pinned[0], "com", wanted_com)
             preferred = _prefer_last_port(cfg, hits)
-        if preferred is not None:
-            return _resolved(preferred, "preferred:last_port")
-        raise _ambiguous(wanted_desc, "match", hits, ports)
+            if preferred is not None:
+                return _resolved(preferred, "preferred:last_port")
+            raise _ambiguous(wanted_desc, "match", hits, ports)
         raise BridgeError(
             "no_device",
             "没找到匹配的串口设备（按描述匹配 %s）。" % wanted_desc,

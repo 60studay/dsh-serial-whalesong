@@ -48,6 +48,7 @@ from .cli_base import (BASE, Logger, _coerce, _emit, _fail, _ok, _paths,
 # `_default_scene` 是 webctl 的老入口，外部（selfcheck_webctl.py）还在从 cli 导入它
 from .cli_web import _default_scene
 from .errors import BridgeError
+from .dangers import explain as danger_explain, matching as danger_match
 from .cli_forward import (_ensure_session, _forward_to_web, _session_alive,
                           _session_http, _warn_page_not_seeing)
 from .ports import resolve_port, same_model_ports
@@ -243,6 +244,13 @@ def cmd_send(paths, args):
                 hint=["在场景 config.json 的 watch.allowed_auto_commands 里加上它",
                       "白名单为空时禁止一切自动命令"],
             )
+
+    # 1.74：危险命令闸门（场景 config.json 的 dangerous_commands）
+    _danger = danger_match(scene.cfg, args.command)
+    if _danger is not None and not getattr(args, "yes", False):
+        raise BridgeError("dangerous_command", danger_explain(_danger),
+                          hint=["确认要发就加 --yes（工具里是 confirm: true）",
+                                "这类命令通常有替代做法，见上面的说明与 protocol.md"])
 
     # 1.71：把"上次成功的口"作为偏好带进去（只在歧义时生效，不覆盖显式 com/match）
     try:
@@ -570,6 +578,8 @@ def build_parser():
     send.add_argument("--auto", action="store_true", help="按自动命令处理，强制白名单检查")
     send.add_argument("--auto-baud", action="store_true",
                       help="依次试 BAUD_CHOICES，用第一条有回显的档位发这条命令")
+    send.add_argument("--yes", action="store_true",
+                      help="确认发送场景里标记为 dangerous_commands 的命令")
     send.add_argument("--hold", action="store_true",
                       help="保持串口打开，供后续调用复用（会话）；空闲 60 秒自动释放")
     send.add_argument("--idle", type=float, default=60.0, help="会话空闲多少秒释放（默认 60）")
