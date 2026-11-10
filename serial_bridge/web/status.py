@@ -92,12 +92,31 @@ class StatusMixin(object):
             data["port"] = resolved["device"]
             # 这个口是"我选的"还是"配置匹配出来的"——页面上要能看出来（1.18）
             data["port_source"] = "override" if self.override_com else "auto"
+            data["port_unresolved"] = False
             # 传输方式描述：网页侧边栏据此显示"串口 COM10 @115200"
             data["transport"] = transport_describe(
                 self.effective_cfg(), resolved["device"], resolved.get("baud"))
         except BridgeError as exc:
             data["resolved"] = None
             data["resolve_error"] = exc.to_dict()
+            # 1.79：解析不出来时**不许再报一个"假的口"**。
+            # 以前 `port` 保留着状态文件里上一次用过的口号（例如 COM7），
+            # 但 `resolved=null`、probe 又说"没连"—— 三个地方三种说法，用户没法信任何一个。
+            data["port"] = ""
+            data["port_unresolved"] = True
+            data["port_source"] = ""
+            # 候选口优先用"这个场景匹配到的"（两块同型号 CH340 时就是那两块），
+            # 拿不到再退回"机器上所有串口" —— 否则页面会把 6 个蓝牙虚拟口也列出来。
+            try:
+                from ..ports import match_candidates
+                matched = match_candidates({
+                    "com": self.scene.cfg.get("com"),
+                    "match": self.scene.cfg.get("match"),
+                    "match_vid_pid": self.scene.cfg.get("match_vid_pid"),
+                })
+            except Exception:
+                matched = []
+            data["resolve_candidates"] = matched or [str(i) for i in (data.get("port_choices") or [])]
             data["transport"] = transport_describe(self.effective_cfg())
             # 手动选的口不见了（拔了/换了 USB 口）：页面要明说"你锁的那个不在了"，
             # 而不是笼统报"找不到设备"——否则用户会以为整个配置坏了。

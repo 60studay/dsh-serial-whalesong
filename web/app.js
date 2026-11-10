@@ -104,7 +104,18 @@ var countdownTimer = null;
     // 传输类型由后端给（transport），以后加 TCP / AI 通道时这里自动跟着变
     var tp = data.transport || {};
     var kindLabel = { serial: '串口', tcp: 'TCP', file: 'AI 通道' }[tp.type] || (tp.type || '串口');
-    $('portPill').textContent = kindLabel + ' ' + (data.port || '未连接') + ' @ ' + (data.baud || '?');
+    // 1.79：解析不出来时，页头**不许**装作"连着某个口"
+    if (data.port_unresolved) {
+      var cand = (data.resolve_candidates || []).join(' / ');
+      var kind2 = (data.resolve_error || {}).kind || '';
+      $('portPill').textContent = kind2 === 'ambiguous_device'
+        ? ('未解析（歧义：' + (cand || '多个同型号口') + '）')
+        : ('未解析（' + (kind2 || '没有可用口') + '）');
+      $('portPill').dataset.unresolved = '1';
+    } else {
+      delete $('portPill').dataset.unresolved;
+      $('portPill').textContent = kindLabel + ' ' + (data.port || '未连接') + ' @ ' + (data.baud || '?');
+    }
     $('portPill').title = tp.frame ? (kindLabel + ' ' + (tp.frame || '')) : kindLabel;
     $('modePill').textContent = data.mode === 'watch' ? '监视模式（占口）' : '轻模式（不占口）';
     document.querySelector('input[name=wmode][value=' + (data.mode || 'light') + ']').checked = true;
