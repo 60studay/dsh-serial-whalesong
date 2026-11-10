@@ -54,7 +54,7 @@ var countdownTimer = null;
   // 帧渲染（1.58/1.59/1.61）：去重记忆、历史载入都在 js/frames.js
   var frames = createFrameView({
     appendTx: function (who, cmd, ts) { appendTx(who, cmd, ts); },
-    append: function (text, ts, port) { append(text, ts, port); },
+    append: function (text, ts, port, fromLog) { append(text, ts, port, fromLog); },
     appendNote: function (text) { appendNote(text); },
     pushEvent: pushEvent,
     api: api,

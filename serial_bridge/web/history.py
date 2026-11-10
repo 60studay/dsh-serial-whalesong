@@ -78,16 +78,21 @@ def tail_frames(log_path, lines=50):
                           "source": "log", "port": port, "from_log": True}
             entries.append(rx_pending)
         elif kind == "RX":
-            if rx_pending is not None and not rx_pending["rx"]:
+            if rx_pending is None:
+                # 1.83：孤立的回显并进上一条，别产出 tx 为空的行
+                if entries:
+                    prev = entries[-1]
+                    if body and body != prev.get("rx"):
+                        prev["rx"] = (prev.get("rx") or "") + body
+                else:
+                    entries.append({"tx": "(仅回显)", "rx": body, "ts": _epoch(stamp),
+                                    "source": "log", "port": "", "from_log": True})
+            elif not rx_pending["rx"]:
                 rx_pending["rx"] = body
-            elif entries:
-                # 1.83：孤立回显并进上一条（别产出 tx 为空的行）
-                prev = entries[-1]
-                prev["rx"] = (prev.get("rx") or "") + body
-            else:
-                entries.append({"tx": "(仅回显)", "rx": body, "ts": _epoch(stamp),
-                                "source": "log", "port": "", "from_log": True})
-            rx_pending = None
+            elif rx_pending["rx"] != body:
+                # 同一 TX 后面的多段回显（真实分片）要拼起来
+                rx_pending["rx"] += body
+            # 完全相同的内容（1.66 之前每条回显会被记两遍）→ 只留一条，不拼
     return entries[-int(lines):]
 
 

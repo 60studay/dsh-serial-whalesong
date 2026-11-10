@@ -68,8 +68,9 @@ export function createConsoleView(opts) {
    *  用户看到"发给了谁"是假的。帧里带了 port 就用它，没有才退回当前口（老帧/老后端）。
    */
   function devLabel(framePort, fromLog) {
-    // 1.82：日志里老格式没有口号时**不许猜**（猜出来的"COM7"是编的），写"未知"
-    if (fromLog && !framePort) return '设备 未知';
+    // 1.82/1.85：日志里老格式没有口号时**不许猜** —— 以前写"未知"但工具提示里
+    // 仍带着当前口，读起来还是像 COM7。现在直接说清是"老日志没记"。
+    if (fromLog && !framePort) return '口未知（老日志）';
     var port = framePort || getPort();
     return port ? '设备 ' + port : '设备';
   }
