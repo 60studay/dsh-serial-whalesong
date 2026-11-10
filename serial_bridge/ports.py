@@ -237,7 +237,10 @@ def resolve_port(cfg):
             pinned = _narrow_by_com(hits, wanted_com)
             if len(pinned) == 1:
                 return _resolved(pinned[0], "com", wanted_com)
-            raise _ambiguous(wanted_vid_pid, "match_vid_pid", hits, ports)
+            preferred = _prefer_last_port(cfg, hits)
+        if preferred is not None:
+            return _resolved(preferred, "preferred:last_port")
+        raise _ambiguous(wanted_vid_pid, "match_vid_pid", hits, ports)
         raise BridgeError(
             "no_device",
             "没找到匹配的串口设备（按 VID:PID 匹配 %s）。" % wanted_vid_pid,
@@ -258,7 +261,10 @@ def resolve_port(cfg):
             pinned = _narrow_by_com(hits, wanted_com)
             if len(pinned) == 1:
                 return _resolved(pinned[0], "com", wanted_com)
-            raise _ambiguous(wanted_serial, "match_serial", hits, ports)
+            preferred = _prefer_last_port(cfg, hits)
+        if preferred is not None:
+            return _resolved(preferred, "preferred:last_port")
+        raise _ambiguous(wanted_serial, "match_serial", hits, ports)
         raise BridgeError(
             "no_device",
             "没找到序列号为 %s 的串口设备。" % wanted_serial,
@@ -276,7 +282,10 @@ def resolve_port(cfg):
             pinned = _narrow_by_com(hits, wanted_com)
             if len(pinned) == 1:
                 return _resolved(pinned[0], "com", wanted_com)
-            raise _ambiguous(wanted_desc, "match", hits, ports)
+            preferred = _prefer_last_port(cfg, hits)
+        if preferred is not None:
+            return _resolved(preferred, "preferred:last_port")
+        raise _ambiguous(wanted_desc, "match", hits, ports)
         raise BridgeError(
             "no_device",
             "没找到匹配的串口设备（按描述匹配 %s）。" % wanted_desc,
@@ -361,6 +370,25 @@ def _narrow_by_com(hits, wanted_com):
         return []
     wanted = wanted_com.strip().lower()
     return [p for p in hits if str(p.get("device") or "").strip().lower() == wanted]
+
+
+def _prefer_last_port(cfg, hits):
+    """歧义时优先"这个场景上次成功的口"（1.71）。
+
+    两块同型号 CH340 同时插着时，"按 match CH340"永远歧义 → 场景整个不能用
+    （gcSTM32 那边就是被这个卡住的）。`last_port` 是这个场景上一次**真的发成功**的口，
+    优先它不是猜，是"上次就这个口通的"。
+    """
+    try:
+        wanted = str(cfg.get("_last_port") or "").strip().upper()
+        if not wanted:
+            return None
+        for item in hits:
+            if str(item.get("device") or "").strip().upper() == wanted:
+                return item
+    except Exception:
+        pass
+    return None
 
 
 def _ambiguous(value, field, hits, ports):

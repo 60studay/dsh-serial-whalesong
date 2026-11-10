@@ -597,4 +597,89 @@ register({
   },
 });
 
+// ── serial_loopback ────────────────────────────────────────────────────────
+// 往 A 写、从 B 读。为什么需要：验证"两个模块是否真的配对（无线链路通不通）"
+// 唯一可靠的办法就是 A 写 B 读。以前没有这个工具，别的 AI 只能自己开两个句柄，
+// 于是网页和日志里什么都没有 —— 用户看到空白，以为插件没工作。
+register({
+  name: 'serial_loopback',
+  description:
+    'Write to one serial port and read from ANOTHER (cross-port loopback). ' +
+    'Use it to prove a wireless link (e.g. two Bluetooth modules) is really passing data: ' +
+    'write `data` to `from`, then wait up to `timeoutMs` for bytes on `to`. ' +
+    'Returns what was received and whether it matched `expect`. ' +
+    'Both ports must be free (not held by another program).',
+  parameters: {
+    from: { type: 'string', required: true, description: 'Port to WRITE to, e.g. "COM10".' },
+    to: { type: 'string', required: true, description: 'Port to READ from, e.g. "COM7".' },
+    data: { type: 'string', required: true, description: 'Text to write.' },
+    expect: { type: 'string', description: 'If given, `matched` tells whether it showed up on the read port.' },
+    baud: { type: 'integer', description: 'Baud rate for both ports (default 115200).' },
+    timeoutMs: { type: 'integer', description: 'How long to wait on the read port (default 1500).' },
+    newline: { type: 'string', description: 'Line ending appended to `data` (default CRLF; pass "" for none).' },
+  },
+  output: {
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        from: { type: 'string' },
+        to: { type: 'string' },
+        baud: { type: 'integer' },
+        sent: { type: 'string' },
+        sentBytes: { type: 'integer' },
+        received: { type: 'string' },
+        receivedHex: { type: 'string' },
+        receivedBytes: { type: 'integer' },
+        expect: { type: 'string' },
+        matched: { type: 'boolean', description: 'Only present when `expect` was given.' },
+        elapsedMs: { type: 'integer' },
+      },
+    },
+  },
+  render: (_args, value) => {
+    const head = [`<from>${value.from}</from>`, `<to>${value.to}</to>`, `<tx>${value.sent}</tx>`];
+    const body = value.receivedBytes
+      ? `${value.received}\n【hex】${value.receivedHex}`
+      : '(读侧一个字节都没收到)';
+    const lines = [...head, '<rx>', body, '</rx>'];
+    if (typeof value.matched === 'boolean') {
+      lines.push(`<matched>${value.matched ? '是（读到了期望内容）' : '否（没读到期望内容）'}</matched>`);
+    }
+    lines.push(`<elapsed_ms>${value.elapsedMs}</elapsed_ms>`);
+    return [{ type: 'text', text: lines.join('\n') }];
+  },
+  isConcurrencySafe: () => false,
+  async execute(args) {
+    const from = String(args?.from ?? '').trim();
+    const to = String(args?.to ?? '').trim();
+    const data = typeof args?.data === 'string' ? args.data : '';
+    if (!from || !to) throw new Error('from 和 to 都要给：一个写、一个读');
+    if (from.toUpperCase() === to.toUpperCase()) {
+      throw new Error('from 和 to 是同一个口；环回必须一写一读两个口。'
+        + ' 例：serial_loopback({from:"COM10", to:"COM7", data:"PING"})');
+    }
+    if (!data) throw new Error('data 不能为空');
+    const argv = ['loopback', '--from', from, '--to', to, '--data', data];
+    const expect = String(args?.expect ?? '').trim();
+    if (expect) argv.push('--expect', expect);
+    if (Number(args?.baud) > 0) argv.push('--baud', String(Number(args.baud)));
+    if (Number(args?.timeoutMs) > 0) argv.push('--timeout-ms', String(Number(args.timeoutMs)));
+    if (typeof args?.newline === 'string') argv.push('--newline', args.newline);
+    const out = await runCli(argv);
+    return {
+      from: out.from ?? from,
+      to: out.to ?? to,
+      baud: Number(out.baud) || 0,
+      sent: out.sent ?? data,
+      sentBytes: Number(out.sent_bytes) || 0,
+      received: out.received ?? '',
+      receivedHex: out.received_hex ?? '',
+      receivedBytes: Number(out.received_bytes) || 0,
+      expect: out.expect ?? expect,
+      ...(typeof out.matched === 'boolean' ? { matched: out.matched } : {}),
+      elapsedMs: Number(out.elapsed_ms) || 0,
+    };
+  },
+});
 }

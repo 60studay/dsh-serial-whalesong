@@ -117,6 +117,28 @@ def _forward_to_daemon(paths, scene_name, command, actor, no_wait=False):
     }
 
 
+def cmd_loopback(paths, args):
+    """跨口环回：往 --from 写、从 --to 读（2026-11-10，gcSTM32 反馈第 2 条）。"""
+    from .loopback import loopback
+    if str(args.from_com).upper() == str(args.to_com).upper():
+        raise BridgeError("config", "--from 和 --to 是同一个口；环回必须一写一读两个口。",
+                          hint=["例：loopback --from COM10 --to COM7 --data PING"])
+    logger = Logger(paths["log_root"], getattr(args, "scene", "") or "loopback")
+    result = loopback(args.from_com, args.to_com, args.data,
+                      baud=int(args.baud or 115200), expect=args.expect,
+                      timeout_ms=int(args.timeout_ms or 1500),
+                      newline=serial_io.decode_newline(getattr(args, "newline", "\\r\\n")),
+                      logger=logger)
+    try:
+        from . import push as push_mod
+        push_mod.push_frame(paths, getattr(args, "scene", "") or "",
+                            "[%s→%s] %s" % (args.from_com, args.to_com, result["sent"]),
+                            result["received"], "ai", args.to_com)
+    except Exception:
+        pass
+    return _ok(result)
+
+
 def cmd_close(paths, args):
     """释放串口会话（serial_close）。没有会话也算成功 —— 幂等。"""
     com = str(getattr(args, "com", "") or "").strip()
@@ -221,6 +243,12 @@ def cmd_send(paths, args):
                 hint=["在场景 config.json 的 watch.allowed_auto_commands 里加上它",
                       "白名单为空时禁止一切自动命令"],
             )
+
+    # 1.71：把"上次成功的口"作为偏好带进去（只在歧义时生效，不覆盖显式 com/match）
+    try:
+        cfg["_last_port"] = str(state.read().get("last_port") or "")
+    except Exception:
+        pass
 
     # 0a 级：自动波特率（1.48）。对 HC-05 这类模块，扫档位是调试的第一步；
     # 让 AI 自己调 5 次不如一次调用返回"哪档有回应 + 回了什么"。
@@ -390,6 +418,11 @@ def cmd_send(paths, args):
 
     try:
         result = serial_io.transact(cfg, resolved["device"], args.command)
+        # 1.71：记住这个场景成功的口，下次歧义时优先它
+        try:
+            state.remember_port(resolved["device"])
+        except Exception:
+            pass
     except BridgeError as exc:
         # 1.55：**失败也要留一行**，否则"AI 发了但没回应"在页面上完全看不出来
         push_mod.push_frame(paths, scene.name, args.command, "",
@@ -514,6 +547,16 @@ def build_parser():
     # 这里只负责把它们挂上去 —— 加子命令只改一个文件。
     cli_query.add_parsers(sub)
 
+    loop = sub.add_parser("loopback")
+    loop.add_argument("--from", dest="from_com", required=True, help="写入的口，例如 COM10")
+    loop.add_argument("--to", dest="to_com", required=True, help="读取的口，例如 COM7")
+    loop.add_argument("--data", required=True, help="要写出去的文本")
+    loop.add_argument("--expect", default="", help="期望从 --to 读到什么（可选，用于判定）")
+    loop.add_argument("--baud", type=int, default=115200)
+    loop.add_argument("--timeout-ms", type=int, default=1500)
+    loop.add_argument("--newline", default="\\r\\n", help="写入时追加的换行（默认 CRLF）")
+    loop.add_argument("--scene", default="", help="只用于日志目录与页面归属（可选）")
+
     close = sub.add_parser("close")
     close.add_argument("--com", default="", help="要释放哪个口的会话；省略=全部")
 
@@ -561,6 +604,7 @@ def main(argv=None):
         "scan": cli_query.cmd_scan,
         "info": cli_query.cmd_info,
         "send": cmd_send,
+        "loopback": cmd_loopback,
         "close": cmd_close,
         "read": cli_query.cmd_read,
         "status": cli_query.cmd_status,

@@ -48,8 +48,19 @@ export function nextStep(kind, error) {
       };
     case 'port_busy':
       return { tool: 'serial_status', args: {}, why: '看谁在占口（网页监视模式 / 串口助手），关掉再发' };
-    case 'control_blocked':
+    case 'control_blocked': {
+      // 1.71（gcSTM32 反馈 3）：**有人看网页**时 AI 自授权必然被拒，
+      // 再建议"可直接调 serial_control"就是自相矛盾 —— 那条路本来就通不了。
+      const watched = /看网页|watching|有人/.test(String(error?.message || '') + String(error?.detail || ''));
+      if (watched) {
+        return {
+          tool: 'serial_status',
+          args: {},
+          why: '有人看着网页：AI 不能自己接管，请人类在页面上点[交给AI]（这条走不通，别自动重试）',
+        };
+      }
       return { tool: 'serial_control', args: { action: 'ai' }, why: '先把控制权交给 AI' };
+    }
     case 'scene_missing':
       return { tool: 'serial_list', args: {}, why: '看有哪些场景；也可以不给场景，直接给 com' };
     default:
