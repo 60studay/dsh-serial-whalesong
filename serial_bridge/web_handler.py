@@ -66,6 +66,32 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 # 于是"用户开着的老实例"永远看不到新加的按钮（用户实测：
                 # 新加的「载入历史」在他页面上根本没有）。HTML 只有十几 KB，读盘无所谓。
                 html = self.ctx.get("load_page")() if self.ctx.get("load_page") else self.ctx["page"]
+                # 1.81：**构建号 + 过期自检内联注入**。
+                # 为什么不能交给 app.js：旧页面加载的就是旧 app.js，它根本没有
+                # "检查自己过期没有"这段代码 —— 自举悖论。所以这段必须由服务端
+                # 每次渲染时注进去，老页面刷新一次就能看到新构建号与升级提示。
+                try:
+                    import json as _json
+                    import time as _time
+                    stamp = self.ctx["static_stamp"]()
+                    newest = max([float(v or 0) for v in stamp.values()] or [0.0])
+                    build = _time.strftime("%m-%d %H:%M", _time.localtime(newest)) if newest else "dev"
+                    inject = (
+                        "<script>window.__WS_STAMP=%s;window.__WS_BUILD='%s';</script>"
+                        "<script>(function(){var s=window.__WS_STAMP||{},b=window.__WS_BUILD;"
+                        "var el=document.getElementById('buildNo');if(el){el.textContent=b;}"
+                        "setInterval(function(){fetch('/status',{cache:'no-store'}).then(function(r){return r.json();})"
+                        ".then(function(d){var st=d&&d.static_stamp;if(!st)return;"
+                        "var newer=Math.max(st['index.html']||0,st['app.js']||0,st['app.css']||0);"
+                        "var mine=Math.max(s['index.html']||0,s['app.js']||0,s['app.css']||0);"
+                        "if(newer>mine+1){var tip=document.getElementById('buildNo');"
+                        "if(tip&&!tip.dataset.stale){tip.dataset.stale='1';"
+                        "tip.textContent=b+' → 有新版，刷新';}}});},3000);})();</script>"
+                        % (_json.dumps(stamp), build)
+                    )
+                    html = html.replace("</body>", inject + "</body>")
+                except Exception:
+                    pass
                 return self._send(200, html, "text/html; charset=utf-8")
             if path in ("/app.css", "/app.js", "/brand.png", "/custom.css") or (
                     path.startswith("/js/") and path.endswith(".js")) or (
@@ -119,6 +145,18 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     except ValueError:
                         since = None
                 return self._json(self.ctx["poll"](force, since))
+            if path == "/history":
+                # 1.80：页面关着时发生的收发，从**磁盘日志**补回来（内存环只留实时）
+                from .web.history import tail_frames, scene_log_path
+                lines = 50
+                try:
+                    lines = max(1, min(500, int(query.get("lines", ["50"])[0])))
+                except Exception:
+                    pass
+                frames = tail_frames(scene_log_path(self.ctx["paths"], self.ctx["scene_name"]), lines)
+                return self._json({"ok": True, "from_log": True,
+                                   "path": scene_log_path(self.ctx["paths"], self.ctx["scene_name"]),
+                                   "frames": frames})
             if path == "/alerts":
                 limit = int((query.get("limit") or ["20"])[0])
                 return self._json({"ok": True, "alerts": self.ctx["alerts"](limit)})

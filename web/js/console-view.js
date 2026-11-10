@@ -24,6 +24,7 @@ export var WHO = {
   external: ['bad', '外部'],
   session: ['ai', '会话'],
   cli: ['bad', '外部'],
+  log: ['auto', '日志'],
   dev: ['dev', '设备'],
 };
 
