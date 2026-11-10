@@ -65,13 +65,22 @@ class Logger(object):
         except OSError:
             return False
 
-    def append(self, direction, text):
+    def append(self, direction, text, port=""):
+        """写一行日志。
+
+        1.82：TX 行要带上**这次用的是哪个口**（`@COM7`）。以前日志只有
+        `[时间] TX 命令`，于是"载入历史"只能拿场景的当前口去补 ——
+        `--com COM10` 发的命令在历史里全变成 COM7，等于编数据。
+        `@` 前缀是为了不与命令本身混淆（`AT+UART=115200,0,0` 这种没有空格，
+        但用户也可能发带空格的文本）。
+        """
         self._ensure()
         self.rotate_if_needed()
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        tag = (" @" + str(port)) if (port and str(direction).upper() == "TX") else ""
         with open(self.path, "a", encoding="utf-8") as handle:
             for line in str(text).splitlines() or [""]:
-                handle.write("[%s] %s %s\n" % (stamp, direction, line))
+                handle.write("[%s] %s%s %s\n" % (stamp, direction, tag, line))
 
     def tail(self, lines):
         """只读**当前** log.txt。

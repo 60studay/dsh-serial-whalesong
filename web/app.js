@@ -58,7 +58,8 @@ var countdownTimer = null;
     appendNote: function (text) { appendNote(text); },
     pushEvent: pushEvent,
     api: api,
-    dispMode: function () { return dispMode; }
+    dispMode: function () { return dispMode; },
+    divider: function (text) { consoleView.divider(text); }
   });
 
   /* ── 显示 ─────────────────────────────────────────────── */
@@ -332,7 +333,10 @@ var countdownTimer = null;
     // 解析不出串口、但机器上插着好几个 → **问人**，不要自己猜（用户 22:5x 定的方向）。
     // 只在"需要选择"这件事发生变化时说一次，不然每 700ms 刷一条。
     if (data.needs_port_choice && !lastChoicePrompt) {
-      lastChoicePrompt = (data.port_choices || []).join('、');
+      // 1.79/1.83：提示里只列**这个场景匹配到的**口，别把 6 个蓝牙虚拟口也倒出来
+    var choiceList = (data.resolve_candidates && data.resolve_candidates.length)
+      ? data.resolve_candidates : (data.port_choices || []);
+    lastChoicePrompt = choiceList.join('、');
       pushEvent('warn', '请选一个串口：' + lastChoicePrompt + '（同型号分不清，需要你定）');
     } else if (!data.needs_port_choice) {
       lastChoicePrompt = '';
@@ -438,6 +442,12 @@ var startedOnce = false;
       }
       frames.applyPoll(data);
     });
+  }
+
+  // 1.84：首屏自动补一段日志（页面没开时发生过的事），用户不用手点。
+  // 手点「载入历史」保留，用来翻更多。
+  function autoLoadOnce() {
+    setTimeout(function () { frames.loadHistory(30, { auto: true }); }, 900);
   }
 
   function startPolling() {
@@ -574,6 +584,7 @@ var startedOnce = false;
     loadRules();
     tick();
     startPolling();
+  autoLoadOnce();
     startCountdown();
     setInterval(renewWhileComposing, 4000);
     startViewerHeartbeat({ onDead: markPageDead });

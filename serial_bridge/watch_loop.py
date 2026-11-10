@@ -158,7 +158,7 @@ class WatchLoop(object):
                     self.ser.write(raw_bytes)
                 else:
                     self.ser.write(str(command).encode("utf-8") + newline)
-            self.logger.append("TX", command)
+            self.logger.append("TX", command, self.device)
             self.last_activity_at = time.time()
             # 监视模式：回显走读线程进 buffer，这里只记"发了什么"。
             # **但帧上必须标出来**：以前这里什么都不标，于是界面上看起来像
@@ -189,7 +189,7 @@ class WatchLoop(object):
         with self.port_lock:
             result = serial_io.transact(cfg, resolved["device"], command,
                                         raw_bytes=raw_bytes)
-        self.logger.append("TX", command)
+        self.logger.append("TX", command, self.device)
         if result["rx_text"]:
             self.logger.append("RX", result["rx_text"])
         self._push_frame(command, result["rx_text"], result["rx_hex"], result["bytes"],

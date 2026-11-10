@@ -14,6 +14,7 @@ export function createFrameView(opts) {
   var pushEvent = opts.pushEvent;
   var api = opts.api;
   var dispMode = opts.dispMode;
+  var divider = opts.divider || function () {};
   var seen = {};
 
   function frameKey(f) {
@@ -58,7 +59,8 @@ export function createFrameView(opts) {
    *  为什么两处都要：内存环只留实时（页面没开就丢），磁盘日志才是留档。
    *  用户实测过"CLI 里配了蓝牙，页面打开什么都没有" —— 那些命令只在日志里。
    */
-  function loadHistory(limit) {
+  function loadHistory(limit, opts) {
+    var auto = !!(opts && opts.auto);
     return Promise.all([
       api('/poll?since=0').catch(function () { return { ok: true, frames: [] }; }),
       api('/history?lines=' + (limit || 50)).catch(function () { return { ok: false }; })
@@ -66,24 +68,32 @@ export function createFrameView(opts) {
       var memory = (results[0] && results[0].frames) || [];
       var disk = (results[1] && results[1].frames) || [];
       var merged = memory.concat(disk).sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
-      return finishHistory(merged, limit, disk.length);
+      return finishHistory(merged, limit, disk.length, auto);
     });
   }
 
-  function finishHistory(framesAll, limit, diskCount) {
+  function finishHistory(framesAll, limit, diskCount, auto) {
     var frames = (framesAll || []).slice(-(limit || 50));
     var added = 0;
+    var firstLogRow = null;
     frames.forEach(function (f) {
       if (frameSeen(f)) return;
+      // 自动补的那一段先打一条分隔线，明确"以下是页面打开前发生的"
+      if (auto && f.from_log && !firstLogRow) {
+        firstLogRow = true;
+        divider('以下是页面打开前的记录（来自日志）');
+      }
       added += 1;
       appendTx(f.from_log ? 'log' : (f.source || 'auto'), f.tx, f.ts);
-      if (dispMode() === 'hex') { if (f.hex) append(f.hex + '\n', f.ts, f.port); }
-      else if (f.rx) append(f.rx, f.ts, f.port);
+      if (dispMode() === 'hex') { if (f.hex) append(f.hex + '\n', f.ts, f.port, f.from_log); }
+      else if (f.rx) append(f.rx, f.ts, f.port, f.from_log);
     });
-    pushEvent('', added
-      ? ('已载入 ' + added + ' 条历史' + (diskCount ? '（含日志里 ' + diskCount + ' 条）' : '') + '（重复的已跳过）')
-      : '没有新的历史可载入（都已在上面）');
-
+    if (!auto) {
+      // 1.83：条数口径写清（去重后 / 原始）
+      pushEvent('', added
+        ? ('已载入 ' + added + ' 条' + (diskCount ? '（去重后；日志原始 ' + diskCount + ' 条）' : '') )
+        : '没有新的历史可载入（都已在上面）');
+    }
     return true;
   }
 

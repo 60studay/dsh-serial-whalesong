@@ -132,7 +132,7 @@ class SerialMixin(object):
             with self.loop.port_lock:
                 self.loop.take()                 # 倒掉写之前就在缓冲里的旧字节
                 self.loop.ser.write(payload)
-                self.logger.append("TX", command)
+                self.logger.append("TX", command, self.current_device().get("device", ""))
                 # 标记"接下来这段回显是手动触发的"，读线程据此把来源标成 manual。
                 # **两处都要标**：self 是 WebServer（自己的逻辑用），loop 是读线程真正读的那个。
                 self._manual_until = time.time() + 2.0
@@ -201,7 +201,7 @@ class SerialMixin(object):
             raise
         finally:
             self.loop.port_lock.release()
-        self.logger.append("TX", command)
+        self.logger.append("TX", command, self.current_device().get("device", ""))
         if result["rx_text"]:
             self.logger.append("RX", result["rx_text"])
         self.state.update(port=resolved["device"], baud=int(cfg.get("baud") or 0))

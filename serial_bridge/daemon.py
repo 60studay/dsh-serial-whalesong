@@ -322,7 +322,7 @@ class Daemon(object):
         """规则自动处置：直接写串口（管家已经持有连接）。"""
         self.transport.write(str(command).encode("utf-8")
                              + _decode_newline(self.scene.cfg.get("newline")))
-        self.logger.append("TX", command)
+        self.logger.append("TX", command, (self.resolved or {}).get("device", ""))
         self.stats["sent"] += 1
 
     def _maybe_check(self, text, source):

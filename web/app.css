@@ -639,3 +639,14 @@
     aside { position: absolute; right: 0; top: 0; bottom: 0; background: var(--bg); z-index: 10; }
     #sidebarToggle { display: inline-block; }
   }
+
+/* 1.84：载入历史的分隔线（"以下是页面打开前的记录"） */
+.ln.sep {
+  display: block;
+  padding: 4px 0;
+  opacity: .62;
+}
+.ln.sep .sep-text {
+  font-size: 12px;
+  letter-spacing: .04em;
+}

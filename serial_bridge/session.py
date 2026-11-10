@@ -137,7 +137,7 @@ class Session(object):
                 self.logger.append("SESSION", "写入失败，会话关闭：%s" % exc)
                 self.stop_event.set()
                 raise BridgeError("port_busy", "会话写入失败（设备可能被拔掉了）：%s" % exc)
-            self.logger.append("TX", command)
+            self.logger.append("TX", command, self.com)
             if not wait:
                 return {"ok": True, "submitted": True, "seq": n}
             raw = b""

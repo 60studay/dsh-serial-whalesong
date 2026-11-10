@@ -67,16 +67,18 @@ export function createConsoleView(opts) {
    *  为什么不用"当前场景的口"：`--com COM10` 发出去的命令以前也标成 COM7，
    *  用户看到"发给了谁"是假的。帧里带了 port 就用它，没有才退回当前口（老帧/老后端）。
    */
-  function devLabel(framePort) {
+  function devLabel(framePort, fromLog) {
+    // 1.82：日志里老格式没有口号时**不许猜**（猜出来的"COM7"是编的），写"未知"
+    if (fromLog && !framePort) return '设备 未知';
     var port = framePort || getPort();
     return port ? '设备 ' + port : '设备';
   }
 
   /** 追加回显：贴到当前回显行；没有就新起一行（设备徽章）。 */
-  function append(text, ts, framePort) {
+  function append(text, ts, framePort, fromLog) {
     if (!text) return;
     if (!curRx) {
-      curRx = newRow('dev', devLabel(framePort), ts);
+      curRx = newRow('dev', devLabel(framePort, fromLog), ts);
       curRx.classList.add('rx');
     }
     curRx.appendChild(document.createTextNode(text));
@@ -110,6 +112,18 @@ export function createConsoleView(opts) {
     trimConsole();
   }
 
+  /** 分隔线（1.84）：用来分开"页面打开前（来自日志）"和之后的实时帧。 */
+  function divider(text) {
+    var row = document.createElement('div');
+    row.className = 'ln sep';
+    var span = document.createElement('span');
+    span.className = 'sep-text';
+    span.textContent = '— ' + text + ' —';
+    row.appendChild(span);
+    consoleEl.appendChild(row);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+
   /** 发完命令后清掉"当前回显块"，让下一条回显新起一行。 */
   function resetRx() {
     curRx = null;
@@ -122,5 +136,6 @@ export function createConsoleView(opts) {
     newRow: newRow,
     trimConsole: trimConsole,
     resetRx: resetRx,
+    divider: divider,
   };
 }

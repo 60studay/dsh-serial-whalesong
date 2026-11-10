@@ -64,15 +64,28 @@ def tail_frames(log_path, lines=50):
         if not match:
             continue
         stamp, kind, body = match.group(1), match.group(2), match.group(3).strip()
+        port = ""
+        if kind == "TX" and body.startswith("@"):
+            # 1.82：`[ts] TX @COM7 命令` —— 口号是这一帧自己的，别拿场景当前口去猜
+            parts = body.split(None, 1)
+            port = parts[0][1:]
+            body = parts[1] if len(parts) > 1 else ""
+        if kind == "TX" and not body:
+            # 1.83：空命令行别单独成帧（它会渲染成"有时间、没内容"的怪行）
+            continue
         if kind == "TX":
             rx_pending = {"tx": body, "rx": "", "ts": _epoch(stamp),
-                          "source": "log", "port": "", "from_log": True}
+                          "source": "log", "port": port, "from_log": True}
             entries.append(rx_pending)
         elif kind == "RX":
             if rx_pending is not None and not rx_pending["rx"]:
                 rx_pending["rx"] = body
+            elif entries:
+                # 1.83：孤立回显并进上一条（别产出 tx 为空的行）
+                prev = entries[-1]
+                prev["rx"] = (prev.get("rx") or "") + body
             else:
-                entries.append({"tx": "", "rx": body, "ts": _epoch(stamp),
+                entries.append({"tx": "(仅回显)", "rx": body, "ts": _epoch(stamp),
                                 "source": "log", "port": "", "from_log": True})
             rx_pending = None
     return entries[-int(lines):]

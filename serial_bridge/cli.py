@@ -416,7 +416,7 @@ def cmd_send(paths, args):
         sent = serial_io.send_only(cfg, resolved["device"], args.command)
         push_mod.push_frame(paths, scene.name, args.command, "",
                             push_mod.push_source(actor), resolved.get("device", ""))
-        logger.append("TX", args.command)
+        logger.append("TX", args.command, resolved.get("device", ""))
         state.update(port=resolved["device"], baud=int(cfg.get("baud") or 0),
                      scene=scene.name)
         return _ok({
@@ -461,7 +461,7 @@ def cmd_send(paths, args):
     push_mod.push_frame(paths, scene.name, args.command,
                         result.get("rx_text") or "",
                         push_mod.push_source(actor), resolved.get("device", ""))
-    logger.append("TX", args.command)
+    logger.append("TX", args.command, resolved.get("device", ""))
     if result["rx_text"]:
         logger.append("RX", result["rx_text"])
     state.update(port=resolved["device"], baud=int(cfg.get("baud") or 0), scene=scene.name)
