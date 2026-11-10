@@ -33,7 +33,9 @@ def matching(cfg, command):
 
     返回命中的那条规则 dict；没有命中返回 None。
     规则写法：`{"command": "AT+BIND?", "why": "...", "safer": "..."}`，
-    `command` 做**前缀不敏感匹配**（`AT+BIND` 能盖住 `AT+BIND?` 和 `AT+BIND=xxx`）。
+    `command` 做**前缀匹配**（大小写不敏感）。**写与查要分开写规则**：
+    `AT+BIND=` 只盖住写入，`AT+BIND?` 只盖住查询 ——
+    很多模块"查"是安全的，"写"才会把链路写坏。
     """
     rules = (cfg or {}).get("dangerous_commands") or []
     if not isinstance(rules, (list, tuple)) or not command:
@@ -50,6 +52,12 @@ def matching(cfg, command):
         if text == target or text.startswith(target):
             return rule
     return None
+
+
+def severity(rule):
+    """规则的强度：block（拦）或 warn（只提示、照发）。默认 block。"""
+    value = str((rule or {}).get("severity") or "block").strip().lower()
+    return "warn" if value == "warn" else "block"
 
 
 def explain(rule):

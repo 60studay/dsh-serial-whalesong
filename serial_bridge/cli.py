@@ -247,10 +247,16 @@ def cmd_send(paths, args):
 
     # 1.74：危险命令闸门（场景 config.json 的 dangerous_commands）
     _danger = danger_match(scene.cfg, args.command)
-    if _danger is not None and not getattr(args, "yes", False):
-        raise BridgeError("dangerous_command", danger_explain(_danger),
-                          hint=["确认要发就加 --yes（工具里是 confirm: true）",
-                                "这类命令通常有替代做法，见上面的说明与 protocol.md"])
+    _danger_warning = ""
+    if _danger is not None:
+        from .dangers import severity as danger_severity
+        if danger_severity(_danger) == "warn":
+            # 1.76：warn 级别只提示、照发（例如改波特率：拦下来反而没法工作）
+            _danger_warning = danger_explain(_danger)
+        elif not getattr(args, "yes", False):
+            raise BridgeError("dangerous_command", danger_explain(_danger),
+                              hint=["确认要发就加 --yes（工具里是 confirm: true）",
+                                    "这类命令通常有替代做法，见上面的说明与 protocol.md"])
 
     # 1.71：把"上次成功的口"作为偏好带进去（只在歧义时生效，不覆盖显式 com/match）
     try:
@@ -459,6 +465,7 @@ def cmd_send(paths, args):
     data = {
         "scene": scene.name,
         "command": args.command,
+        **({"warning": _danger_warning} if _danger_warning else {}),
         "port": resolved["device"],
         "port_source": resolved["source"],
         "note": resolved["note"],
