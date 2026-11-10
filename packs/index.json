@@ -18,6 +18,21 @@
       "source": "https://cloud.tencent.cn/developer/article/2497827"
     },
     {
+      "id": "jdy41",
+      "name": "JDY-41（2.4G 无线串口，不是蓝牙）",
+      "aliases": ["JDY-41", "JDY41", "2.4G串口模块", "2.4G透传"],
+      "file": "jdy41/protocol.md",
+      "bus": "uart",
+      "modes": "配置(CS=L,SET=L) / 透传(CS=L,SET=悬空) / 遥控(C0~C7,CS=H)",
+      "probe": "ABCD (十六进制，不是 AT 文本)",
+      "expect": "+V5",
+      "baud_hint": "默认 9600 8N1；波特率由配置字节决定",
+      "status": "unverified",
+      "tested_at": null,
+      "tested_note": "来自官方 V5 手册（本地资料），本机未实测",
+      "source": "E:\\资料\\模块\\JDY-41(2.4G通信)\\81072-JDY-41 2.4G无线串口模块\\JDY-41-V5版本手册\\JDY-41手册-V5版本.pdf"
+    },
+    {
       "id": "esp01",
       "name": "ESP8266 / ESP-01（AT 固件）",
       "aliases": ["ESP8266", "ESP-01", "ESP01", "安信可"],
