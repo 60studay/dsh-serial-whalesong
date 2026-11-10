@@ -138,7 +138,18 @@ class WatchLoop(object):
                 current = int(cfg.get("wait_first_byte_ms") or 1500)
                 cfg["wait_first_byte_ms"] = max(50, min(current, interval_ms - 50))
         newline = serial_io.decode_newline(cfg.get("newline"), "\\r\\n")
-        if self.running and self.ser is not None:
+        if self.running and self.ser is None:
+            # 1.68 回归：`start()` 会先把 running 置真、再打开句柄。这中间有几十毫秒，
+            # 定时线程正好撞进来就会走"每轮开关"，而我们自己的句柄已经占着口 →
+            # 日志里每拍一条"COM7 被其他程序占用"，但收发其实是成功的（只是绕了一圈）。
+            deadline = time.time() + 0.6
+            while self.running and self.ser is None and time.time() < deadline:
+                time.sleep(0.01)
+
+        # 1.68：**句柄还开着就用它**，不要看 running —— stop() 会先把 running 置假、
+        # 再关句柄，这中间定时线程会走"每轮开关"，结果开的是自己正占着的口
+        # （日志每拍一条"被其他程序占用"，其实是自己）。
+        if self.ser is not None:
             # **握手柄时也必须互斥**：定时线程和网页/AI 的手动发送会同时写同一个口，
             # 不锁的话两条命令的字节会交错，设备收到的就是乱码（表现为"不回话"）。
             # 1.31 实测：定时 500ms 跑着时 AI 发命令，日志只有 TX 没有 RX。

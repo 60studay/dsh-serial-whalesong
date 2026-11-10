@@ -117,6 +117,24 @@ class StatusMixin(object):
 
         探测节流：3 秒内复用上次结果；`owner(probe=True)` 自身还有"避让最近收发"的保护（1.47）。
         """
+        # **我们自己正握着口时不要去探测**：探测会 open 一次，和定时发送/监视模式抢口，
+        # 日志里就会出现"定时期间没能保持端口：COM7 被其他程序占用"（2026-11-10 实测）。
+        loop = getattr(self, "loop", None)
+        if loop is not None and (getattr(loop, "running", False)
+                                 or getattr(loop, "ser", None) is not None):
+            return {"owner": "ours", "device": getattr(loop, "device", "") or "",
+                    "detail": "本网页正持有这个口（监视模式 / 定时发送）"}
+        # 注意：**不要看 _autosend_thread 是否存活** —— 那个线程一旦起来就一直活着
+        # （关掉开关只是空转等待），拿它判断"正在占用"会让页面永远显示"本网页占用"。
+        # 定时发送**已开启**时也绝不能探 —— 它每一拍都要开合/保持这个口，
+        # 我们每 3 秒插一次 open，会让"保持端口"失败并每拍记一条错误。
+        try:
+            if bool((self.effective_watch() or {}).get("send_enabled")):
+                return {"owner": "ours", "device": "",
+                        "detail": "定时发送已开启（本网页在用这个口）"}
+        except Exception:
+            pass
+
         now = time.time()
         cached = getattr(self, "_owner_status_cache", None)
         if cached and now - cached[0] < 3.0:

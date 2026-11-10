@@ -185,24 +185,42 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
           · 关掉定时就立刻还口
         """
         if not enabled:
-            if self._autosend_hold:
-                if self.mode == "light" and self.loop.running:
+            # 关掉定时发送就必须**真的放手**：句柄没关时 owner() 会一直说"本网页占用"，
+            # 用户关了开关却看到"被本网页占用"，还以为自己没关掉。
+            if self._autosend_hold or (self.mode == "light" and self.loop.ser is not None):
+                if self.mode == "light" and (self.loop.running or self.loop.ser is not None):
                     self.loop.stop()
                 self._autosend_hold = False
             return
-        if self.mode != "light" or self.loop.running:
+        # 1.68：把"句柄还开着但 running 已假"也算"已经在握"。
+        # 否则 stop() 与下一拍之间会再 start() 一次 → 打开自己正占着的口 → port_busy，
+        # 日志里就是"保持打开"紧跟一条"没能保持端口"。
+        if self.mode != "light" or self.loop.running or self.loop.ser is not None:
             return                      # 监视模式 / 已经握着：不用管
-        try:
-            resolved = self.current_device()
-            self.loop.watch_mode = False       # 1.60：轻模式定时握口，回显要同步收
-            self.loop.start(resolved["device"],
-                            int(self.effective_cfg().get("baud") or 115200))
-            self._autosend_hold = True
-            self.logger.append("WATCH", "定时期间保持 %s 打开（避免每轮 DTR/RTS 脉冲）"
-                               % resolved["device"])
-        except BridgeError as exc:
-            self._autosend_hold = False
-            self.logger.append("WATCH", "定时期间没能保持端口：%s（退回每轮开关）" % exc.message)
+        # 1.68：开定时发送的瞬间，可能正好有人在开这个口（页面探测 / 上一拍的每轮开关）。
+        # 一次失败就退回"每轮开关"会每拍记一条错误，所以：短重试一次 + 2 秒内不再重试，
+        # 避免把定时循环本身拖慢（重试太慢会让"按间隔发送"少发几拍）。
+        if time.time() < getattr(self, "_hold_retry_at", 0.0):
+            return
+        last_error = None
+        for attempt in range(2):
+            try:
+                resolved = self.current_device()
+                self.loop.watch_mode = False   # 1.60：轻模式定时握口，回显要同步收
+                self.loop.start(resolved["device"],
+                                int(self.effective_cfg().get("baud") or 115200))
+                self._autosend_hold = True
+                self._hold_retry_at = 0.0
+                self.logger.append("WATCH", "定时期间保持 %s 打开（避免每轮 DTR/RTS 脉冲）"
+                                   % resolved["device"])
+                return
+            except BridgeError as exc:
+                last_error = exc
+                self._autosend_hold = False
+                time.sleep(0.12)
+        self._hold_retry_at = time.time() + 2.0
+        self.logger.append("WATCH", "定时期间没能保持端口：%s（退回每轮开关，2 秒后再试）"
+                           % (last_error.message if last_error else "未知原因"))
 
     def _autosend_loop(self):
         """定时发送：独立于模式、独立于串口占用。
