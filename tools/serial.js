@@ -87,10 +87,14 @@ register({
             // 1.34a：**不再判死**。场景只是"长期配置"，不是入场券 ——
             // 解析不出来时把候选口列出来，并给出下一条能直接执行的调用。
             const reason = String(scene.resolveError || '串口不可用').split('\n')[0];
-            const candidates = value.ports.map((port) => port.device);
+            // 1.64：只列**这个场景真正匹配到的**口。以前把全部端口当候选，
+            // 于是"匹配到 2 个"后面跟着 8 个串口（含 6 个蓝牙虚拟口）。
+            const candidates = (Array.isArray(scene.candidates) && scene.candidates.length)
+              ? scene.candidates
+              : [];
             lines.push(`  ${head}  ⚠ ${reason}`);
             if (candidates.length > 0) {
-              lines.push(`      候选：${candidates.join(' / ')}`);
+              lines.push(`      候选（本场景匹配到的）：${candidates.join(' / ')}`);
               const guess = candidates.find((device) => /CH340|CH341|CP210|FT232/i.test(
                 value.ports.find((port) => port.device === device)?.description ?? '')) || candidates[0];
               lines.push(`      直接可发：serial_send({com:"${guess}", command:"AT"})`);

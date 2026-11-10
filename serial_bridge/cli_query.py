@@ -37,6 +37,16 @@ def cmd_scan(paths, args):
         except BridgeError as exc:
             scene["resolved"] = None
             scene["resolve_error"] = exc.to_dict()
+    # 1.64：给每个场景补上**真正匹配到的**候选口。
+    # 以前前端拿"所有端口"当候选，于是 match_vid_pid=1A86:7523 的场景
+    # 会列出 COM3..COM10 八个（含 6 个蓝牙虚拟口），"匹配到 2 个"和候选对不上。
+    try:
+        from .ports import match_candidates
+        for scene in scenes:
+            scene["candidates"] = match_candidates(scene)
+    except Exception:
+        for scene in scenes:
+            scene.setdefault("candidates", [])
     return _ok({"ports": ports, "scenes": scenes, "log_root": paths["log_root"]})
 
 

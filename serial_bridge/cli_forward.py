@@ -12,11 +12,15 @@
 
 import json
 import os
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
 
+from .cli_base import BASE
 from .errors import BridgeError
+from . import session as session_mod
 from .state import _safe_name
 
 

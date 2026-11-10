@@ -399,3 +399,31 @@ def same_model_ports(device, ports=None):
                 and _normalize_vid_pid(item.get("vid_pid") or "") == vid_pid]
     except Exception:
         return []
+
+
+def match_candidates(scene, ports=None):
+    """这个场景**按自己的匹配条件**能命中哪些口（1.64）。
+
+    只用来给 serial_list 的"候选"一行：说"匹配到 2 个"就该只列那 2 个，
+    把 8 个口（含蓝牙虚拟口）全列出来等于没说，还会误导人去选错口。
+    """
+    try:
+        listing = ports if ports is not None else scan_ports()
+        cfg = {
+            "com": str(scene.get("com") or ""),
+            "match": str(scene.get("match") or ""),
+            "match_vid_pid": str(scene.get("match_vid_pid") or ""),
+        }
+        hits = []
+        wanted_vid = _normalize_vid_pid(cfg["match_vid_pid"])
+        if wanted_vid:
+            hits = _match_by_vid_pid(listing, wanted_vid)
+        if not hits and cfg["match"]:
+            hits = _match_by_description(listing, cfg["match"])
+        if not hits and cfg["com"]:
+            hits = _match_by_device(listing, cfg["com"])
+        if not hits:
+            return []                      # 没有条件/没命中 → 不装作有候选
+        return [port_label(item)["device"] for item in hits]
+    except Exception:
+        return []

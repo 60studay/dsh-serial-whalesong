@@ -7,6 +7,7 @@ self.ports 和拆之前完全一样，行为零变化。
 """
 
 import os
+import threading
 import time
 
 from ..channel import run_evidence

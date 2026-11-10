@@ -259,7 +259,7 @@ class WebServer(StatusMixin, RulesMixin, ChannelMixin, SerialMixin, PortMixin):
                 # 场景可以声明 command_mode: "hex"，让定时发送的 command 按十六进制解析
                 cmd_mode = str(watch.get("command_mode")
                                or self.scene.cfg.get("command_mode") or "text").lower()
-                raw = _parse_hex(command) if cmd_mode == "hex" else None
+                raw = serial_io.parse_hex_text(command) if cmd_mode == "hex" else None
                 if cmd_mode == "hex" and raw is None:
                     raise BridgeError("config", "定时发送命令不是合法十六进制：%r" % command)
                 text = self.loop.send_raw(command, raw_bytes=raw)

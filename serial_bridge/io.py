@@ -302,3 +302,21 @@ def drain(cfg, device, duration_ms=400, baud=None):
     """
     with port_lock(cfg, device):
         return _drain_impl(cfg, device, duration_ms, baud)
+
+
+def parse_hex_text(text):
+    """把 "AA 55 01" 这种十六进制写法解析成字节；不合法返回 None。
+
+    1.65：`supervisor._autosend_loop` 里用了 `_parse_hex` 却没 import（它原本只在
+    daemon.py 里有），定时发送一开 hex 模式就会 NameError。放到 io 里两边共用。
+    """
+    raw = str(text or "").strip().replace(",", " ").replace("0x", "").replace("0X", "")
+    if not raw:
+        return None
+    compact = raw.replace(" ", "")
+    try:
+        if len(compact) % 2 != 0:
+            return None
+        return bytes.fromhex(compact)
+    except ValueError:
+        return None
