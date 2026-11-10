@@ -33,6 +33,21 @@
       "source": "https://raw.githubusercontent.com/Moo2017/esp-at/refs/heads/master/docs/ESP_AT_Commands_Set.md"
     },
     {
+      "id": "jdy",
+      "name": "JDY 系列蓝牙（JDY-31 / JDY-23 / JDY-16 / JDY-40）",
+      "aliases": ["JDY-31", "JDY-23", "JDY-16", "JDY-40", "JDY31", "蓝牙SPP"],
+      "file": "jdy/protocol.md",
+      "bus": "uart",
+      "modes": "上电即 AT（无按键）；被连接后转透传",
+      "probe": "AT+VERSION",
+      "expect": "JDY-31-V1.2",
+      "baud_hint": "默认 9600 8N1（和 HC-05 的 38400 不同）",
+      "status": "unverified",
+      "tested_at": null,
+      "tested_note": "来自厂商规格书与 SunFounder 文档，本机未实测",
+      "source": "https://docs.sunfounder.com/projects/ultimate-sensor-kit/en/latest/components_basic/38-component_jdy31.html"
+    },
+    {
       "id": "gps-nmea",
       "name": "GPS / 北斗模块（NMEA 0183 输出）",
       "aliases": ["NEO-6M", "ATGM336H", "NMEA", "GPS", "北斗"],
