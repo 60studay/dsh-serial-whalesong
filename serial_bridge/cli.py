@@ -400,6 +400,10 @@ def cmd_send(paths, args):
             # 明确标记"这条是网页实例发的"：port_source 现在可能是 override（带 --com），
             # 不能再用它判断有没有走转发（自检踩过）。
             "forwarded": True,
+            # 1.77：**新增字段必须过一次转发路径**。warn 级的危险提示（例如 AT+UART=）
+            # 在本地发送时能返回，经页面转发时漏了 —— 和 1.45 丢 --com 是同一类坑。
+            **({"warning": (forwarded.get("warning") or _danger_warning)}
+               if (forwarded.get("warning") or _danger_warning) else {}),
         }
         if accepted_only:
             data["note"] = "已交给网页发送（监视模式，回显在网页上）"

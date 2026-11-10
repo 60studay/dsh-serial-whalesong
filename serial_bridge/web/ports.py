@@ -195,7 +195,29 @@ class PortMixin(object):
         只有用户主动点「检测」才走这里：探测要真的 open 一次串口，
         而 CH340 打开瞬间会拉 DTR/RTS —— 对接着复位电路的板子等于一次硬复位。
         """
-        value = self.ports.owner(probe=True)
+        # 1.78：和 /status 用**同一份解析结果、同样的新鲜度**。
+        # 以前这里走 owner(probe=True) 的 15 秒缓存，而 /status 走 fresh=True，
+        # 于是两个接口会给出相反结论（一个说"连着 COM7"，一个说"没连"）。
+        # 1.78：**和 /status 走同一份解析**（`self.current_device()` 且带 override /
+        # preferred 的同一套规则）。以前这里走 owner(probe=True) 的缓存，两边会打架。
+        device, source, note = "", "", ""
+        try:
+            resolved = self.current_device()
+            device = resolved["device"]
+            source = resolved.get("source") or ""
+            note = resolved.get("note") or ""
+        except BridgeError as exc:
+            # 解析不出来也要回答"这个口现在能不能用"，但把原因说清楚，
+            # 不要再编一句"网页未连接串口"（那是旧文案，会误导）。
+            device = str(self.override_com or "")
+            note = exc.message
+        value = self.ports.owner(probe=True, fresh=True)
+        value = dict(value)
+        value["port"] = device
+        value["port_source"] = source
+        if note and not value.get("detail"):
+            value["detail"] = note
+        value["status_port"] = device        # 供页面/自检对照：两边必须一致
         return dict({"ok": True}, **value)
 
 

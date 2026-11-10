@@ -11,6 +11,7 @@ import time
 
 from ..channel import run_evidence
 from ..config import load_scene
+from ..dangers import explain as danger_explain, matching as danger_match, severity as danger_severity
 from ..errors import BridgeError
 from ..ports import guess_port, resolve_port, scan_ports
 from ..rules import CHECK_SOURCES, RULE_TYPES, merge_watch, normalize_check_source
@@ -59,6 +60,24 @@ class SerialMixin(object):
         command = str(text or "").strip()
         if not command:
             raise BridgeError("config", "命令不能为空")
+
+        # 1.77：**页面这条路径也要过一遍危险命令闸门**。
+        # 以前只有 CLI / 工具会拦，人从页面点发送就绕过去了（而且页面是"人按的"，
+        # 更该提醒）。这里和 CLI 用同一套规则：block 拦、warn 只带提示。
+        danger_warning = ""
+        rule = danger_match(self.scene.cfg, command)
+        if rule is not None:
+            if danger_severity(rule) == "warn":
+                # warn：照发，但把提示带回去（页面和 CLI 都要看得到）
+                danger_warning = danger_explain(rule)
+            else:
+                # block：页面上没有"确认"这一步，就不给发 ——
+                # 要走这条路请用 CLI / 工具，显式 --yes / confirm: true。
+                raise BridgeError(
+                    "dangerous_command", danger_explain(rule),
+                    hint=["页面上没有“确认后照发”这一步；要走这条路请用 CLI：send --command ... --yes",
+                          "或工具 serial_send({... confirm: true})"])
+
         if actor == "ai":
             allowed, current = self.state.check_ai_allowed()
             if not allowed:
@@ -122,7 +141,8 @@ class SerialMixin(object):
                     self.loop._push_frame(command, "", "", 0,
                                           source if source != "web" else "external")
                 if self.mode == "watch":
-                    return {"ok": True, "accepted": True, "mode": self.mode}
+                    return {"ok": True, "accepted": True, "mode": self.mode,
+                    **({"warning": danger_warning} if danger_warning else {})}
                 # 轻模式（定时占口）也要**同步拿回显**：只回 accepted 会让调用方按
                 # no_response 判失败 —— 等于换个姿势失败。
                 cfg = self.effective_cfg()
@@ -136,6 +156,7 @@ class SerialMixin(object):
                     "port": resolved["device"],
                     "port_source": "override" if (com or self.override_com) else "auto",
                     "rx_text": text,
+            **({"warning": danger_warning} if danger_warning else {}),
                     "rx_hex": " ".join("%02X" % b for b in raw),
                     "bytes": len(raw), "empty": not raw}
 
@@ -212,6 +233,7 @@ class SerialMixin(object):
             "port": resolved["device"],
             "port_source": "override" if (com or self.override_com) else "auto",
             "rx_text": result["rx_text"],
+            **({"warning": danger_warning} if danger_warning else {}),
             "rx_hex": result["rx_hex"],
             "bytes": result["bytes"],
             "elapsed_ms": result["elapsed_ms"],
