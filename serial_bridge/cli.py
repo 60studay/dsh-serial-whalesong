@@ -407,6 +407,14 @@ def cmd_send(paths, args):
         }
         if accepted_only:
             data["note"] = "已交给网页发送（监视模式，回显在网页上）"
+        # 1.72 补漏：**转发路径也要记住成功的口**。
+        # 只写在直发分支里，于是"页面开着时发成功"永远不会记 last_port，
+        # 歧义优先就永远不生效（真机复验时才发现）。
+        try:
+            if data.get("port"):
+                state.remember_port(data["port"])
+        except Exception:
+            pass
         return _ok(_require_reply(data, cfg))
 
     resolved = resolve_port(cfg)

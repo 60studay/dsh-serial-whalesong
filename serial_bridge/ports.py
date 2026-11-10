@@ -239,7 +239,7 @@ def resolve_port(cfg):
                 return _resolved(pinned[0], "com", wanted_com)
             preferred = _prefer_last_port(cfg, hits)
             if preferred is not None:
-                return _resolved(preferred, "preferred:last_port")
+                return _resolved(preferred, "preferred:last_port", wanted_com)
             raise _ambiguous(wanted_vid_pid, "match_vid_pid", hits, ports)
         preferred = None
         raise _ambiguous(wanted_vid_pid, "match_vid_pid", hits, ports)
@@ -265,7 +265,7 @@ def resolve_port(cfg):
                 return _resolved(pinned[0], "com", wanted_com)
             preferred = _prefer_last_port(cfg, hits)
             if preferred is not None:
-                return _resolved(preferred, "preferred:last_port")
+                return _resolved(preferred, "preferred:last_port", wanted_com)
             raise _ambiguous(wanted_serial, "match_serial", hits, ports)
         raise BridgeError(
             "no_device",
@@ -286,7 +286,7 @@ def resolve_port(cfg):
                 return _resolved(pinned[0], "com", wanted_com)
             preferred = _prefer_last_port(cfg, hits)
             if preferred is not None:
-                return _resolved(preferred, "preferred:last_port")
+                return _resolved(preferred, "preferred:last_port", wanted_com)
             raise _ambiguous(wanted_desc, "match", hits, ports)
         raise BridgeError(
             "no_device",

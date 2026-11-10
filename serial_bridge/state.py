@@ -542,6 +542,18 @@ class SharedState(object):
             return 0
         return count
 
+    def remember_port(self, device):
+        """记住这个场景上次真正发成功过的口（1.71）。
+
+        两块同型号 CH340 同时插着时，"按 match CH340"永远歧义 → 场景整个不可用
+        （gcSTM32 那边就是被这个卡住的）。`last_port` 是上一次**真的发成功**的口，
+        歧义时优先它不是猜，是"上次就这个口通的"。
+        """
+        try:
+            self.update(last_port=str(device or ""))
+        except Exception:
+            pass
+
     def read_alerts(self, limit=20):
         try:
             with open(self.alerts_path, encoding="utf-8") as handle:
@@ -565,16 +577,3 @@ def _safe_name(name):
     for ch in str(name):
         keep.append(ch if (ch.isalnum() or ch in "-_") else "_")
     return "".join(keep) or "scene"
-
-
-    def remember_port(self, device):
-        """记住这个场景上次真正发成功过的口（1.71）。
-
-        两块同型号 CH340 同时插着时，"按 match CH340"永远歧义 → 场景整个不可用
-        （gcSTM32 那边就是被这个卡住的）。`last_port` 是上一次**真的发成功**的口，
-        歧义时优先它不是猜，是"上次就这个口通的"。
-        """
-        try:
-            self.update(last_port=str(device or ""))
-        except Exception:
-            pass
