@@ -27,7 +27,14 @@ def _open(device, baud, logger=None):
     import serial  # pyserial（vendored）
 
     try:
+        # ⚠️ 打开串口默认会拉 DTR，而 HC-05 这类模块 DTR=有效就**复位** ——
+        # 一开就把刚配好的链路打断，环回永远测不通（protocol.md 里写过这条硬件事实）。
         handle = serial.Serial(device, int(baud), timeout=0.05)
+        try:
+            handle.dtr = False
+            handle.rts = False
+        except Exception:
+            pass
     except Exception as exc:            # noqa: BLE001  统一翻成 kind
         kind = "port_busy" if "拒绝访问" in str(exc) or "Access is denied" in str(exc) else "no_device"
         raise BridgeError(kind, "打不开 %s：%s" % (device, exc),
