@@ -54,7 +54,7 @@ var countdownTimer = null;
   // 帧渲染（1.58/1.59/1.61）：去重记忆、历史载入都在 js/frames.js
   var frames = createFrameView({
     appendTx: function (who, cmd, ts) { appendTx(who, cmd, ts); },
-    append: function (text, ts) { append(text, ts); },
+    append: function (text, ts, port) { append(text, ts, port); },
     appendNote: function (text) { appendNote(text); },
     pushEvent: pushEvent,
     api: api,
@@ -168,6 +168,22 @@ var countdownTimer = null;
         : '刚才') + ' 起 · ' + durTxt + '）';
     }
     oe.textContent = label;
+
+    // 1.69：占用 → 释放，两行都进状态轨道（带时长；这期间插件 0 条记录就提示可能被绕过）
+    var prevOwner = lastStatus.owner;
+    if (shown.owner === 'other' && prevOwner !== 'other') {
+      pushEvent('bad', (shown.device || '串口') + ' 被其他程序占用'
+        + (shown.since ? '（' + new Date(shown.since * 1000).toLocaleTimeString('zh-CN', { hour12: false }) + ' 起）' : '')
+        + (shown.bypass_suspect ? '；插件这段时间 0 条收发记录，可能有人绕过了插件' : ''));
+    } else if (shown.owner !== 'other' && prevOwner === 'other') {
+      var rel = Number(shown.released_after) || 0;
+      var mm = Math.floor(rel / 60);
+      var ss = rel % 60;
+      pushEvent('', (shown.released_device || '串口') + ' 已释放（占用 '
+        + (mm ? mm + ' 分 ' : '') + ss + ' 秒）'
+        + (shown.released_bypass ? '；这段时间插件 0 条记录 → 可能有人绕过了插件' : ''));
+    }
+    lastStatus.owner = shown.owner;
     oe.title = (shown.detail || '')
       + (shown.owner === 'other' ? '\n进程名：' + (shown.process_name || '未知（Windows 不提供占用进程名）') : '')
       + (shown.bypass_suspect ? '\n这段时间插件没有收发记录 —— 可能有人绕过了插件直接开这个口' : '')

@@ -233,7 +233,7 @@ class SerialMixin(object):
             pass
 
 
-    def push_external_frame(self, tx, rx, source="external"):
+    def push_external_frame(self, tx, rx, source="external", port=""):
         """把"页面之外发出的命令"补进帧流（1.52）。
 
         调用方是会话进程 / CLI 直发：它们自己进程里没有这个 ring，
@@ -241,7 +241,8 @@ class SerialMixin(object):
         """
         try:
             frame = self.loop._push_frame(str(tx or ""), str(rx or ""), "", 0,
-                                          str(source or "external"))
+                                          str(source or "external"),
+                                          str(port or ""))
             if isinstance(frame, dict):
                 frame["rx_pending"] = False
             return {"ok": True, "pushed": True}

@@ -184,6 +184,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     str(body.get("tx") or ""),
                     str(body.get("rx") or ""),
                     str(body.get("source") or "external"),
+                    str(body.get("port") or ""),          # 1.70：帧自己的口号
                 ))
             if path == "/control":
                 # 缺字段/未知动作都用 400，但必须说清楚是哪一种

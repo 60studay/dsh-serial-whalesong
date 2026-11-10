@@ -51,7 +51,7 @@ SEND_QUIET_MS = 25
 
 # ── 进程内状态 ──────────────────────────────────────────────────────────────
 
-def _push_page_frame(paths, scene_name, tx, rx, source="ai"):
+def _push_page_frame(paths, scene_name, tx, rx, source="ai", port=""):
     """把管家这一条投进同场景网页的帧流（1.52）。
 
     管家是独立进程，页面看不到它的收发；而"人开着页面却什么都看不到"
@@ -66,7 +66,7 @@ def _push_page_frame(paths, scene_name, tx, rx, source="ai"):
             url = str(_json.load(handle).get("url") or "")
         if not url:
             return
-        payload = _json.dumps({"tx": tx, "rx": rx, "source": source},
+        payload = _json.dumps({"tx": tx, "rx": rx, "source": source, "port": port},
                               ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(
             url.rstrip("/") + "/frames", data=payload,
@@ -254,7 +254,8 @@ class Daemon(object):
         # 回显仍然会被读线程收进 buffer，之后用 /poll 或 serial_read 取。
         if wait_ms <= 0:
             _push_page_frame(self.paths, self.scene.name, text, "",
-                             "ai" if actor == "ai" else "session")
+                             "ai" if actor == "ai" else "session",
+                             (self.resolved or {}).get("device", ""))
             return {
                 "scene": self.scene.name,
                 "command": text,
@@ -298,7 +299,8 @@ class Daemon(object):
             self.logger.append("RX", data.decode("utf-8", errors="replace"))
         _push_page_frame(self.paths, self.scene.name, text,
                          data.decode("utf-8", errors="replace"),
-                         "ai" if actor == "ai" else "session")
+                         "ai" if actor == "ai" else "session",
+                         (self.resolved or {}).get("device", ""))
         return {
             "scene": self.scene.name,
             "command": text,

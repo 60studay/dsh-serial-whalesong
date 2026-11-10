@@ -55,8 +55,8 @@ def _live_pages(paths):
     return items
 
 
-def _post(url, tx, rx, source, timeout=2.0):
-    payload = json.dumps({"tx": tx, "rx": rx, "source": source},
+def _post(url, tx, rx, source, port="", timeout=2.0):
+    payload = json.dumps({"tx": tx, "rx": rx, "source": source, "port": port},
                          ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         url.rstrip("/") + "/frames", data=payload,
@@ -65,7 +65,7 @@ def _post(url, tx, rx, source, timeout=2.0):
         return json.loads(resp.read().decode("utf-8") or "{}")
 
 
-def push_frame(paths, scene_name="", tx="", rx="", source="external"):
+def push_frame(paths, scene_name="", tx="", rx="", source="external", port=""):
     """把一帧**广播**给所有活着的页面实例，返回投成功的 url 列表。
 
     1.57：以前只投"最近活跃"的那一个（按 .web.json 的 mtime 猜），
@@ -82,7 +82,7 @@ def push_frame(paths, scene_name="", tx="", rx="", source="external"):
     delivered = []
     for page in ordered:
         try:
-            result = _post(page["url"], tx, rx, source)
+            result = _post(page["url"], tx, rx, source, port)
             if result.get("ok"):
                 delivered.append(page["url"])
         except Exception:

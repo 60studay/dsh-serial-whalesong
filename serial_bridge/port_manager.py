@@ -40,6 +40,7 @@ class PortManager(object):
         self._last_control = None
         self._port_owner_cache = {}
         self._owner_since = 0.0        # 1.68：第一次发现“被别人占”的时刻
+        self._owner_last = {}          # 1.69：上一次“被占”的结论（释放时要用它算时长）
 
     # ── 判断 ────────────────────────────────────────────────────────────────
     def should_hold(self, control=None):
@@ -181,6 +182,10 @@ class PortManager(object):
                     self._owner_since = now2
                 seconds = int(now2 - self._owner_since)
                 last = float(getattr(self.loop, "last_activity_at", 0.0) or 0.0)
+                self._owner_last = {
+                    "device": device,
+                    "bypass_suspect": bool(last < self._owner_since),
+                }
                 value = {
                     "owner": "other",
                     "device": device,
@@ -194,6 +199,12 @@ class PortManager(object):
             else:
                 value = {"owner": "unknown", "device": device, "detail": exc.message}
         if value.get("owner") != "other":
+            # 1.69：刚放开时把"占了多久 / 有没有人绕过插件"留在结果里，
+            # 页面据此在状态轨道写一行「串口已释放（占用 X 分 Y 秒）」。
+            if self._owner_since:
+                value["released_after"] = int(time.time() - self._owner_since)
+                value["released_bypass"] = bool(self._owner_last.get("bypass_suspect"))
+                value["released_device"] = self._owner_last.get("device") or device
             self._owner_since = 0.0
         self._port_owner_cache = {"at": now, "value": value}
         return value

@@ -175,13 +175,13 @@ class WatchLoop(object):
                     self.logger.append("RX", text)
                 self.last_activity_at = time.time()      # 1.66：整条记一次，读线程这次不记
                 self._push_frame(command, text, " ".join("%02X" % b for b in raw),
-                                 len(raw), source)
+                                 len(raw), source, self.device)
                 if raw:
                     self.no_response_streak = 0
                 else:
                     self.no_response_streak += 1
                 return text
-            frame = self._push_frame(command, "", "", 0, source)
+            frame = self._push_frame(command, "", "", 0, source, self.device)
             if isinstance(frame, dict):
                 frame["rx_pending"] = True
             return ""
@@ -193,7 +193,7 @@ class WatchLoop(object):
         if result["rx_text"]:
             self.logger.append("RX", result["rx_text"])
         self._push_frame(command, result["rx_text"], result["rx_hex"], result["bytes"],
-                         source)
+                         source, (result.get("device") or self.device))
         # 轻模式的自动发送也要更新"无回显计数"，否则 no_response 规则永远不触发
         if result["empty"]:
             self.no_response_streak += 1
@@ -236,11 +236,16 @@ class WatchLoop(object):
                 time.sleep(0.01)
         return out
 
-    def _push_frame(self, tx, rx, rx_hex, nbytes, source="auto"):
-        """记一帧给网页显示。返回这一帧本身，调用方可以补字段（比如 rx_pending）。"""
+    def _push_frame(self, tx, rx, rx_hex, nbytes, source="auto", port=""):
+        """记一帧给网页显示。返回这一帧本身，调用方可以补字段（比如 rx_pending）。
+
+        1.70：帧要带**自己的口号**。以前页面只能拿"当前场景解析到的口"画徽章，
+        于是 `--com COM10` 发的命令也显示 COM7 —— 用户看到的"发给了谁"是假的。
+        """
         frame = {
             "tx": tx, "rx": rx, "hex": rx_hex,
             "bytes": int(nbytes or 0), "ts": time.time(), "source": source,
+            "port": str(port or getattr(self, "device", "") or ""),
             # 统一字段，两种模式都有：
             #   轻模式 = 同步收发，回显已经在这一帧里 → False；
             #   监视模式 = 回显走读线程，先标 True，取到后再补（见 send_raw）。

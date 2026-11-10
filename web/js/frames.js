@@ -38,9 +38,9 @@ export function createFrameView(opts) {
       if (frameSeen(f)) return;
       appendTx(f.source || 'auto', f.tx, f.ts);
       if (dispMode() === 'hex') {
-        if (f.hex) append(f.hex + '\n', f.ts);
+        if (f.hex) append(f.hex + '\n', f.ts, f.port);
       } else if (f.rx) {
-        append(f.rx, f.ts);
+        append(f.rx, f.ts, f.port);
       } else if (!f.rx_pending) {
         // 轻模式**同步**收发：这一帧空了就是设备真没回话
         appendNote('（设备没回话）');
@@ -64,8 +64,8 @@ export function createFrameView(opts) {
         if (frameSeen(f)) return;
         added += 1;
         appendTx(f.source || 'auto', f.tx, f.ts);
-        if (dispMode() === 'hex') { if (f.hex) append(f.hex + '\n', f.ts); }
-        else if (f.rx) append(f.rx, f.ts);
+        if (dispMode() === 'hex') { if (f.hex) append(f.hex + '\n', f.ts, f.port); }
+        else if (f.rx) append(f.rx, f.ts, f.port);
       });
       pushEvent('', added
         ? '已载入 ' + added + ' 条历史（重复的已跳过）'

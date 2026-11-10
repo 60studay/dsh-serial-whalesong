@@ -48,13 +48,13 @@ def _post_frame(com, tx, rx):
         # 1.55：没有显式地址时用"最近活跃的页面"兜底（用户开着哪个就投给哪个）
         try:
             from . import push as _push
-            _push.push_frame(_paths_for_push(), "", tx, rx, "session")
+            _push.push_frame(_paths_for_push(), "", tx, rx, "session", com)
         except Exception:
             pass
         return
     try:
         import urllib.request
-        payload = json.dumps({"tx": tx, "rx": rx, "source": "session"},
+        payload = json.dumps({"tx": tx, "rx": rx, "source": "session", "port": com},
                              ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(url.rstrip("/") + "/frames", data=payload,
                                          headers={"Content-Type": "application/json; charset=utf-8"})

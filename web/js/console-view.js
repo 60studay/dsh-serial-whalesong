@@ -61,17 +61,21 @@ export function createConsoleView(opts) {
     return body;
   }
 
-  /** 设备徽章的文字：带上当前口号（两块同型号板子时，这是唯一能区分"谁回的"线索）。 */
-  function devLabel() {
-    var port = getPort();
+  /** 设备徽章的文字：带上**这一帧自己的**口号（1.70）。
+   *
+   *  为什么不用"当前场景的口"：`--com COM10` 发出去的命令以前也标成 COM7，
+   *  用户看到"发给了谁"是假的。帧里带了 port 就用它，没有才退回当前口（老帧/老后端）。
+   */
+  function devLabel(framePort) {
+    var port = framePort || getPort();
     return port ? '设备 ' + port : '设备';
   }
 
   /** 追加回显：贴到当前回显行；没有就新起一行（设备徽章）。 */
-  function append(text, ts) {
+  function append(text, ts, framePort) {
     if (!text) return;
     if (!curRx) {
-      curRx = newRow('dev', devLabel(), ts);
+      curRx = newRow('dev', devLabel(framePort), ts);
       curRx.classList.add('rx');
     }
     curRx.appendChild(document.createTextNode(text));

@@ -268,7 +268,7 @@ def cmd_send(paths, args):
                               hint=["确认设备已上电、TX/RX 没接反",
                                     "有些模块要求先按 KEY 进 AT 模式"])
         push_mod.push_frame(paths, scene.name, args.command, hit["response"],
-                            push_mod.push_source(actor))
+                            push_mod.push_source(actor), resolved_device_for_baud)
         return _ok({
             "scene": scene.name, "command": args.command,
             "port": resolved_device_for_baud, "port_source": "auto-baud",
@@ -369,7 +369,7 @@ def cmd_send(paths, args):
     if getattr(args, "no_wait", False):
         sent = serial_io.send_only(cfg, resolved["device"], args.command)
         push_mod.push_frame(paths, scene.name, args.command, "",
-                            push_mod.push_source(actor))
+                            push_mod.push_source(actor), resolved.get("device", ""))
         logger.append("TX", args.command)
         state.update(port=resolved["device"], baud=int(cfg.get("baud") or 0),
                      scene=scene.name)
@@ -409,7 +409,7 @@ def cmd_send(paths, args):
     # 1.55：页面开着时，页面之外的直发也要进帧流（空回显也算一条 TX）
     push_mod.push_frame(paths, scene.name, args.command,
                         result.get("rx_text") or "",
-                        push_mod.push_source(actor))
+                        push_mod.push_source(actor), resolved.get("device", ""))
     logger.append("TX", args.command)
     if result["rx_text"]:
         logger.append("RX", result["rx_text"])
