@@ -53,6 +53,7 @@
     "web/*.js",
     "web/js/*.js",
     "protocols/**",
+    "packs/**",
     "vendor/**"
   ],
   "dsh": {

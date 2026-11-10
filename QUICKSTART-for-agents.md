@@ -107,7 +107,40 @@ serial_send({ com: "COM10", baud: 115200, command: "AT" }) // 回 OK → 这是�
 
 ---
 
-## 6. 卡住了怎么办（比"别做什么"更重要）
+## 6. 设备不认识怎么办：先读 `packs/index.json`（**省一半时间**）
+
+插件自带一份**常见设备知识**，放在 `packs/`：
+
+```
+packs/index.json          ← 先读这个（几十行）：每行有 id / 名字 / 探活命令 / 文件路径 / 实测状态
+packs/hc05/protocol.md    ← HC-05 / HC-06 蓝牙
+packs/esp01/protocol.md   ← ESP8266 / ESP-01（AT 固件）
+packs/gps-nmea/protocol.md← GPS / 北斗（NMEA）
+packs/modbus-rtu/protocol.md ← Modbus RTU 通用
+```
+
+**怎么用**（三步，别整目录乱翻）：
+
+1. 打开 `packs/index.json`
+2. 按设备外形/型号/或 `probe` 猜一个 → 拿到 `file` 路径
+3. **只读那一个文件**，然后：
+
+```
+先发 probe 确认身份（例：AT → OK）
+再按里面的命令表干活
+```
+
+**看 `status` 字段**：
+
+- `tested`：本机实测过，命令可信
+- `unverified`：**抄自公开文档，没在本机验过** → 先探活，再发任何"写"命令（配参数、改模式）
+
+⚠️ **别人家的设备，别凭猜发命令。** 一条对 A 设备无害的指令，对 B 设备可能是"恢复出厂"甚至更糟。
+**探活命令（probe）是你唯一可以直接发的。**
+
+---
+
+## 7. 卡住了怎么办（比"别做什么"更重要）
 
 **同一个设想试 3 次不通，立刻停手，去查资料。**
 

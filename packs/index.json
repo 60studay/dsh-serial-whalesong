@@ -1,0 +1,66 @@
+{
+  "_说明": "内置设备知识索引。AI 先读本文件，再按 file 路径跳转，只读需要的那一份。",
+  "_用法": "1) 按 users_plug 或 probe 猜设备 2) 打开对应 file 3) 先用 probe 确认身份再发命令",
+  "packs": [
+    {
+      "id": "hc05",
+      "name": "HC-05 / HC-06 蓝牙串口模块",
+      "aliases": ["HC05", "HC-06", "蓝牙透传", "hc05V2.3_le"],
+      "file": "hc05/protocol.md",
+      "bus": "uart",
+      "modes": "AT 模式（KEY 上电） / 数据透传模式",
+      "probe": "AT",
+      "expect": "OK",
+      "baud_hint": "AT 波特率跟随 AT+UART 设置；出厂常为 38400，克隆版常见 115200",
+      "status": "tested",
+      "tested_at": "2026-11-09",
+      "tested_note": "两块 hc05V2.3_le 克隆板，主从配对实测通",
+      "source": "https://cloud.tencent.cn/developer/article/2497827"
+    },
+    {
+      "id": "esp01",
+      "name": "ESP8266 / ESP-01（AT 固件）",
+      "aliases": ["ESP8266", "ESP-01", "ESP01", "安信可"],
+      "file": "esp01/protocol.md",
+      "bus": "uart",
+      "modes": "AT 固件模式（默认） / 透传模式",
+      "probe": "AT",
+      "expect": "OK",
+      "baud_hint": "常见 115200（老固件 9600/74880）",
+      "status": "unverified",
+      "tested_at": null,
+      "tested_note": "来自公开 AT 指令集文档，本机未实测",
+      "source": "https://raw.githubusercontent.com/Moo2017/esp-at/refs/heads/master/docs/ESP_AT_Commands_Set.md"
+    },
+    {
+      "id": "gps-nmea",
+      "name": "GPS / 北斗模块（NMEA 0183 输出）",
+      "aliases": ["NEO-6M", "ATGM336H", "NMEA", "GPS", "北斗"],
+      "file": "gps-nmea/protocol.md",
+      "bus": "uart",
+      "modes": "上电即周期输出 ASCII 语句，无需命令",
+      "probe": "(被动) 上电后应持续收到以 $ 开头的行",
+      "expect": "$GPGGA 或 $GNRMC 或 $GNGGA",
+      "baud_hint": "几乎都是 9600 8N1",
+      "status": "unverified",
+      "tested_at": null,
+      "tested_note": "NMEA 0183 标准字段，本机未实测",
+      "source": "http://diec.unizar.es/~mdpelaez/personal/Comunicaciones_satelite/Lassen%20iQ_Reference%20Manual_Rev%20B_April%202005.pdf"
+    },
+    {
+      "id": "modbus-rtu",
+      "name": "Modbus RTU 从站（通用）",
+      "aliases": ["Modbus", "RTU", "ModbusRTU", "485"],
+      "file": "modbus-rtu/protocol.md",
+      "bus": "uart(rs485)",
+      "modes": "主从问答，无主动上报",
+      "probe": "读保持寄存器：01 03 00 00 00 01 + CRC",
+      "expect": "01 03 02 xx xx + CRC（长度随寄存器数变）",
+      "baud_hint": "9600/19200/38400 都可能，8N1 或 8E1",
+      "status": "unverified",
+      "tested_at": null,
+      "tested_note": "Modbus 规范通用帧格式，本机未实测",
+      "source": "https://cms.media.wilo.com/cdndoc/wilo251750/3539113/wilo251750.pdf"
+    }
+  ]
+}
