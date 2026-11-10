@@ -500,3 +500,21 @@ AT+RESET 治不了              → 必须**物理断电**（拔 VCC）
 > ⚠️ 这 30 秒里**发任何 AT 都会占串口并打断扫描**，等于把刚建好的链路再掐断。
 > 30 秒后用跨口环回验证：`serial_loopback{from: 主机口, to: 从机口, data: "PING"}`。
 
+> ## ✅ 2026-11-10：用插件的 `serial_loopback` 复验通过（同一套配方）
+
+> 两个 HC-05 重新插回来后，按上面的配方配（从机 ROLE=0 / 主机 ROLE=1 + CMODE=1 +
+> PSWD=123456），主机 `AT+RESET` 后**等 30 秒**，然后：
+
+```
+serial_loopback({from:"COM10", to:"COM7",  data:"HELLO-M", expect:"HELLO-M"})
+  → matched: true   766ms
+serial_loopback({from:"COM7",  to:"COM10", data:"PING-S",  expect:"PING-S"})
+  → matched: true   155ms
+```
+
+> ⚠️ **两条硬约束**（都踩过）：
+> 1. 环回打开串口时必须 `dtr=False, rts=False` —— 默认拉 DTR 会让模块**复位**，
+>    一测就断。插件 `serial_bridge/loopback.py` 已按这个开。
+> 2. 主机 `AT+RESET` 之后 **30 秒内别发任何命令**（包括 `AT`、包括环回），
+>    否则会打断它的扫描，卡在 `CONNECTING`，只能物理断电重来。
+
