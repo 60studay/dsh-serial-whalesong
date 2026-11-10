@@ -51,6 +51,10 @@ class WatchLoop(object):
         self._manual_until = 0.0
         # 1.60：这个口是"监视模式"还是"轻模式定时发送握着"——决定回显怎么拿。
         self.watch_mode = False
+        # 1.66：同步收这次回显的窗口内，读线程**不要**再记一行 RX。
+        # 否则同一条回显会被记两遍（读线程按 chunk 记 + 这里整体记）。
+        self._suppress_reader_log_until = 0.0
+        self.last_activity_at = 0.0     # 1.68：最近一次收发的时刻（判断“是不是有人绕过插件”）
         # 判定统一交给 RuleChecker（与管家共用同一份逻辑，不再各写一份）
         self.checker = RuleChecker(scene, state, logger, send_action=self._send_rule)
 
@@ -144,6 +148,7 @@ class WatchLoop(object):
                 else:
                     self.ser.write(str(command).encode("utf-8") + newline)
             self.logger.append("TX", command)
+            self.last_activity_at = time.time()
             # 监视模式：回显走读线程进 buffer，这里只记"发了什么"。
             # **但帧上必须标出来**：以前这里什么都不标，于是界面上看起来像
             # "发了、设备没回"，和"真的没回"分不开——排查时会把两种完全不同的
@@ -157,6 +162,7 @@ class WatchLoop(object):
                 text = raw.decode("utf-8", errors="replace")
                 if text:
                     self.logger.append("RX", text)
+                self.last_activity_at = time.time()      # 1.66：整条记一次，读线程这次不记
                 self._push_frame(command, text, " ".join("%02X" % b for b in raw),
                                  len(raw), source)
                 if raw:
@@ -199,6 +205,9 @@ class WatchLoop(object):
         轻模式定时发送自己握着口，没有 transact 可用，只能这样拿回显。
         """
         out = b""
+        # 1.66：收集期间让读线程闭嘴，收集完由这里**整条**记一行 ——
+        # 这样每条 TX 后面正好一条 RX（以前是两条：读线程一片 + 这里一条）。
+        self._suppress_reader_log_until = time.time() + timeout_s + silence_s + 1.0
         deadline = time.time() + timeout_s
         while time.time() < deadline and not out:
             out += self.take()
@@ -271,7 +280,10 @@ class WatchLoop(object):
                 with self.lock:
                     self.buffer.extend(chunk)
                 text = chunk.decode("utf-8", errors="replace")
-                self.logger.append("RX", text)
+                # 1.66：同步收集期间不重复记 RX（见 _collect_echo）
+                if time.time() >= self._suppress_reader_log_until:
+                    self.logger.append("RX", text)
+                self.last_activity_at = time.time()
                 self.no_response_streak = 0
                 # 刚手动/网页发过命令 → 这段回显算 manual，否则算轮询 watch
                 source = "manual" if time.time() < self._manual_until else "watch"

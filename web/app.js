@@ -156,8 +156,22 @@ var countdownTimer = null;
     var shown = owner;
     if (probeResult && (Date.now() - probeResult.at) < 8000) shown = probeResult;
     oe.dataset.owner = shown.owner || 'unknown';
-    oe.textContent = OWNER_LABEL[shown.owner] || '—';
-    oe.title = (shown.detail || '') + '（点一下检测占用）';
+    // 1.68：被别的程序占着时，把"从何时起 / 多久了"直接写在胶囊上 ——
+    // 只显示"被其他程序占用"看不出是刚发生还是已经挂了一小时。
+    var label = OWNER_LABEL[shown.owner] || '—';
+    if (shown.owner === 'other') {
+      var sinceTxt = shown.since ? new Date(shown.since * 1000) : null;
+      var dur = Number(shown.seconds) || 0;
+      var durTxt = dur >= 60 ? (Math.floor(dur / 60) + ' 分钟') : (dur + ' 秒');
+      label += '（' + (sinceTxt
+        ? ('21'.length && (('0' + sinceTxt.getHours()).slice(-2) + ':' + ('0' + sinceTxt.getMinutes()).slice(-2)))
+        : '刚才') + ' 起 · ' + durTxt + '）';
+    }
+    oe.textContent = label;
+    oe.title = (shown.detail || '')
+      + (shown.owner === 'other' ? '\n进程名：' + (shown.process_name || '未知（Windows 不提供占用进程名）') : '')
+      + (shown.bypass_suspect ? '\n这段时间插件没有收发记录 —— 可能有人绕过了插件直接开这个口' : '')
+      + '\n（点一下检测占用）';
     oe.style.cursor = 'pointer';
 
     // 暂停/恢复按钮

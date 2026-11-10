@@ -39,6 +39,7 @@ class PortManager(object):
         self.last_reconcile = None
         self._last_control = None
         self._port_owner_cache = {}
+        self._owner_since = 0.0        # 1.68：第一次发现“被别人占”的时刻
 
     # ── 判断 ────────────────────────────────────────────────────────────────
     def should_hold(self, control=None):
@@ -115,7 +116,7 @@ class PortManager(object):
             self.shutdown_event.wait(1.0)
 
     # ── 谁占着 ──────────────────────────────────────────────────────────────
-    def owner(self, probe=False):
+    def owner(self, probe=False, fresh=False):
         """谁占着这个口：ours / other / free / unknown。用于网页状态栏。
 
         **默认不探测**（probe=False）：
@@ -148,17 +149,21 @@ class PortManager(object):
         # 现象：用户说"明明没有 AI 在跑，我输入却报串口被占用"——是我们自己的探测
         # （每 5 秒真 open 一次）和他的发送撞在同一瞬间。
         # 状态文件的 mtime 就是"最近一次收发"的可靠代理（每次发送都会 update）。
+        # 1.68：改用**真实的收发时刻**（loop.last_activity_at），不再看状态文件 mtime ——
+        # 状态文件会被 /status 自己的结算写脏，导致探测永远被"刚有人用过"挡掉。
         try:
-            import os as _os
-            age = now - _os.path.getmtime(self.state.path)
-        except OSError:
+            last = float(getattr(self.loop, "last_activity_at", 0.0) or 0.0)
+            age = (now - last) if last else 999.0
+        except Exception:
             age = 999.0
         if age < 3.0:
             return {"owner": "unknown", "device": device,
                     "detail": "%.0f 秒前刚有人用过这个口，先不探测（避免抢口）" % age}
 
         cached = self._port_owner_cache.get("value")
-        if cached is not None and (now - self._port_owner_cache.get("at", 0)) < 15.0:
+        # 1.68：`fresh=True` 时不复用缓存 —— 页面轮询要能及时看到"刚刚被别人占了"，
+        # 15 秒的缓存会让它一直是"可用"。
+        if not fresh and cached is not None and (now - self._port_owner_cache.get("at", 0)) < 15.0:
             return cached
         if not device:
             value = {"owner": "unknown", "device": "", "detail": "串口未解析出来"}
@@ -170,9 +175,25 @@ class PortManager(object):
             value = {"owner": "free", "device": device, "detail": "%s 空闲，可用" % device}
         except BridgeError as exc:
             if exc.kind == "port_busy":
-                value = {"owner": "other", "device": device,
-                         "detail": "被其他程序占用（串口助手/其他终端工具）"}
+                # 1.68：把“被占用”变成可读状态：从何时起、多久了、是不是"有人绕过插件"。
+                now2 = time.time()
+                if not self._owner_since:
+                    self._owner_since = now2
+                seconds = int(now2 - self._owner_since)
+                last = float(getattr(self.loop, "last_activity_at", 0.0) or 0.0)
+                value = {
+                    "owner": "other",
+                    "device": device,
+                    "detail": "被其他程序占用（串口助手 / 别的脚本 / 另一个终端工具）",
+                    "since": int(self._owner_since),
+                    "seconds": seconds,
+                    "process_name": "未知（Windows 不提供占用进程名）",
+                    # 我们这边在这段时间里**没有任何收发** → 很可能是有人绕过插件直接开了口
+                    "bypass_suspect": bool(last < self._owner_since),
+                }
             else:
                 value = {"owner": "unknown", "device": device, "detail": exc.message}
+        if value.get("owner") != "other":
+            self._owner_since = 0.0
         self._port_owner_cache = {"at": now, "value": value}
         return value

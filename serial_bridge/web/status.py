@@ -105,9 +105,28 @@ class StatusMixin(object):
                 data["override_stale"] = True
             # 解析不出来 + 插着不止一个 → 该问人（用**一次**扫描的结果，别重复扫）
             data["needs_port_choice"] = len(data["port_choices"]) > 1
-        data["port_owner"] = self.ports.owner()
+        # 1.68：**周期性探测**（3 秒最多一次）。用户问的是"别的程序占着口时页面能不能看出来"，
+        # 不探测就永远"状态未知"，等于没回答。探测自带"3 秒内避让最近收发"保护（1.47）。
+        data["port_owner"] = self._owner_for_status()
         return data
 
+
+
+    def _owner_for_status(self):
+        """1.68：给页面用的占用状态（含从何时起、多久了、是不是有人绕过插件）。
+
+        探测节流：3 秒内复用上次结果；`owner(probe=True)` 自身还有"避让最近收发"的保护（1.47）。
+        """
+        now = time.time()
+        cached = getattr(self, "_owner_status_cache", None)
+        if cached and now - cached[0] < 3.0:
+            return cached[1]
+        try:
+            value = self.ports.owner(probe=True, fresh=True)
+        except Exception:
+            value = {"owner": "unknown", "device": "", "detail": "探测失败"}
+        self._owner_status_cache = (now, value)
+        return value
 
     def poll(self, force=False, since=None):
         """把后端攒下的数据交给网页。

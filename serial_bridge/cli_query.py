@@ -120,6 +120,8 @@ def cmd_status(paths, args):
         "state": current,
         # 1.54：这次调用用的是哪个解释器（排查黑窗/环境问题要用）
         "python_path": os.environ.get("SERIAL_BRIDGE_PYTHON", ""),
+        # 1.68：这个口现在被谁占着（别的程序占着时，AI 也能一眼看出来）
+        "port_owner": _probe_owner(scene),
         "ai_may_send": bool(allowed),
         "watched": state.presence_alive(),
         "transport": transport_info,
@@ -236,3 +238,36 @@ def add_parsers(sub):
     control.add_argument("--action", required=True,
                          choices=["ai", "pause", "resume", "human", "renew"])
     control.add_argument("--by", default="cli", help="谁改的（记在状态文件里）")
+
+
+def _probe_owner(scene):
+    """一次性探测串口占用（1.68）。失败一律返回 unknown，不能因为"查不出去"就报错。"""
+    try:
+        from .ports import resolve_port
+        from . import io as serial_io
+        cfg = dict(scene.cfg)
+        try:
+            device = resolve_port(cfg)["device"]
+        except BridgeError:
+            # 场景匹配到多个同型号口（两块 CH340 常见）：拿第一个候选来探，
+            # 只要能回答"这个口现在被占着没有"就够了。
+            from .ports import match_candidates
+            cands = match_candidates({
+                "com": cfg.get("com"), "match": cfg.get("match"),
+                "match_vid_pid": cfg.get("match_vid_pid"),
+            })
+            if not cands:
+                raise
+            device = cands[0]
+            cfg["_override_com"] = device
+        try:
+            serial_io.open_and_check(cfg)
+            return {"owner": "free", "device": device, "detail": "%s 空闲" % device}
+        except BridgeError as exc:
+            if exc.kind == "port_busy":
+                return {"owner": "other", "device": device,
+                        "detail": "被其他程序占用（串口助手 / 别的脚本）",
+                        "process_name": "未知（Windows 不提供占用进程名）"}
+            return {"owner": "unknown", "device": device, "detail": exc.message}
+    except Exception as exc:
+        return {"owner": "unknown", "device": "", "detail": str(exc)}
