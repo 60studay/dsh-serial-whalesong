@@ -2,6 +2,15 @@
 
 > 从 v2.2.0 起，发布说明由人写；完整提交号请看 `git log`（本项目从 v2.1.0 开始对外）。
 
+## v2.2.6 — 2026-11-11（**紧急修复**：v2.2.5 装不上）
+
+> ⚠️ **v2.2.5 是坏的，请直接装 v2.2.6。** v2.2.5 里 `serial_loopback` 的 `render`
+> 被写在了 `output` 外面，DSH 加载时校验不过 → **整个插件拒绝加载，11 个工具全消失**。
+
+- 修：`tools/serial.js` 把 `render` 挪回 `output` 内（结构与其他 10 个工具一致）
+- 新增 `selfcheck_plugin_load.py`：用 DSH 自带 node 真跑一次 `apply()`，逐工具断言 `output` 里有 `schema` + `render`、`execute` 是函数
+- 该自检做过反证：把 `render` 从 `output` 删掉（语法仍合法）→ `PASS 10 / FAIL 1`；还原 → `PASS 11 / FAIL 0`
+
 ## v2.2.5 — 2026-11-10（补丁：看得见、拦得住、能环回）
 
 这一版全是"用起来才发现"的问题，没有新概念。
