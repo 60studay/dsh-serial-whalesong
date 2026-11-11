@@ -444,12 +444,6 @@ var startedOnce = false;
     });
   }
 
-  // 1.84：首屏自动补一段日志（页面没开时发生过的事），用户不用手点。
-  // 手点「载入历史」保留，用来翻更多。
-  function autoLoadOnce() {
-    setTimeout(function () { frames.loadHistory(30, { auto: true }); }, 900);
-  }
-
   function startPolling() {
     if (pollTimer) return;
     pollTimer = setInterval(tick, 700);
@@ -584,7 +578,6 @@ var startedOnce = false;
     loadRules();
     tick();
     startPolling();
-  autoLoadOnce();
   consoleView.setupFontZoom();
     startCountdown();
     setInterval(renewWhileComposing, 4000);

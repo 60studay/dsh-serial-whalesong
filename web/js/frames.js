@@ -60,6 +60,8 @@ export function createFrameView(opts) {
    *  用户实测过"CLI 里配了蓝牙，页面打开什么都没有" —— 那些命令只在日志里。
    */
   function loadHistory(limit, opts) {
+    // 用户 23:19：**打开页面不自动载入**（看着不干净）。这里保留 auto 只是为了
+    // 调用方显式要“补一段并打分隔线”时可用（目前没有调用方）。
     var auto = !!(opts && opts.auto);
     return Promise.all([
       api('/poll?since=0').catch(function () { return { ok: true, frames: [] }; }),
