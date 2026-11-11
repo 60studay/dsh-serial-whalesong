@@ -165,8 +165,12 @@ def main():
         auto_code = "\n".join(line.split("//")[0] for line in auto_code.splitlines())
         m = _re.search(r"AUTO_OPEN_SUBS\s*=\s*\[([^\]]*)\]", auto_code)
         subs = _re.findall(r"'([a-z_]+)'", m.group(1)) if m else []
-        check("触发范围 = send / read / control", sorted(subs) == ["control", "read", "send"], subs)
-        for quiet in ("list", "info", "status", "watch", "daemon", "webctl", "prefs"):
+        # 1.87：白名单会随子命令增加（loopback / daemon / watch 也持口），
+        # 所以这里断言"必须包含这几条"，而不是"恰好等于这三个"。
+        must = {"send", "read", "control", "loopback"}
+        check("触发范围包含 send / read / control / loopback", must <= set(subs), subs)
+        # 1.87：watch / daemon 也持口，现在**应该**触发（从"不触发"名单里移走）
+        for quiet in ("list", "info", "status", "webctl", "prefs"):
             check("不因 %s 触发" % quiet, quiet not in subs, subs)
         check("detached 子进程（不阻塞主收发）", "detached: true" in auto_code)
         check("输出丢掉（不读、不解析）", "stdio: 'ignore'" in auto_code)

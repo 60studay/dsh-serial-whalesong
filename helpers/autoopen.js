@@ -17,7 +17,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 /** 哪些子命令算"真的在动这块板子"。纯查询 / 后台观察 / 开关自身都不算。 */
-export const AUTO_OPEN_SUBS = ['send', 'read', 'control'];
+// 哪些子命令一用就该把页面叫出来。**新增会开串口的子命令必须加到这里**，
+// 否则"用串口就自动弹页面"对那条命令静默失效（1.87：环回就漏了）。
+// 自检 `selfcheck_autopen_cover.py` 会把 bridge.py 的子命令与这张表逐项比对。
+export const AUTO_OPEN_SUBS = ['send', 'read', 'control', 'loopback', 'daemon', 'watch'];
 
 // 默认 `= {}`：调用点漏传参数时也不能抛。函数体里每句都在 try/catch 内，
 // 唯独"形参解构"发生在 try 之前，对面拿 maybeAutoOpen(undefined) 试出来过。

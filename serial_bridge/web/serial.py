@@ -90,7 +90,8 @@ class SerialMixin(object):
                 })
                 # 收发区也要留一行：用户盯的是那块，只有状态轨道不够（对面 1.33 判据 3）
                 self.loop._push_frame(command, "", "", 0,
-                                      source if source != "web" else "external")
+                                      source if source != "web" else "external",
+                                      self._frame_port())
                 raise BridgeError(
                     "control_blocked",
                     "控制权是 %s，AI 不能发命令。" % current.get("state"),
@@ -139,7 +140,8 @@ class SerialMixin(object):
                 self.loop._manual_until = self._manual_until
                 if source != "web" or not from_page:
                     self.loop._push_frame(command, "", "", 0,
-                                          source if source != "web" else "external")
+                                          source if source != "web" else "external",
+                                          self._frame_port())
                 if self.mode == "watch":
                     return {"ok": True, "accepted": True, "mode": self.mode,
                     **({"warning": danger_warning} if danger_warning else {})}
@@ -195,7 +197,8 @@ class SerialMixin(object):
         except BridgeError:
             # 失败帧：只在"真的尝试过"之后才推（换行/占用的错误也得让用户看见）
             frame = self.loop._push_frame(
-                command, "", "", 0, source if source != "web" else "external")
+                command, "", "", 0, source if source != "web" else "external",
+                str(resolved.get("device") or ""))
             if isinstance(frame, dict):
                 frame["note"] = "发送失败"
             raise
@@ -225,7 +228,8 @@ class SerialMixin(object):
             self.loop._push_frame(command, result["rx_text"], result["rx_hex"],
                                   result["bytes"],
                                   source if source != "web" else
-                                  ("web" if from_page else "external"))
+                                  ("web" if from_page else "external"),
+                                  str(resolved.get("device") or ""))
         return {
             "ok": True,
             "accepted": True,
@@ -270,6 +274,18 @@ class SerialMixin(object):
             return {"ok": True, "pushed": True}
         except Exception as exc:
             return {"ok": False, "error": {"kind": "internal", "message": str(exc)}}
+
+    def _frame_port(self):
+        """给帧用的口号（1.88）。
+
+        页面自己发的帧也要带真实口号，否则前端只能回落"当前场景的口"，
+        一旦场景解析变了，历史里显示的就是假的。
+        解析失败返回空串 —— 宁可空，也不猜。
+        """
+        try:
+            return str(self.current_device().get("device") or "")
+        except Exception:
+            return ""
 
     def _human_hold_seconds(self):
         try:

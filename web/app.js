@@ -585,6 +585,7 @@ var startedOnce = false;
     tick();
     startPolling();
   autoLoadOnce();
+  consoleView.setupFontZoom();
     startCountdown();
     setInterval(renewWhileComposing, 4000);
     startViewerHeartbeat({ onDead: markPageDead });

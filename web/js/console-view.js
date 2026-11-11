@@ -130,6 +130,40 @@ export function createConsoleView(opts) {
     curRx = null;
   }
 
+  /* 1.92：收发区字号 —— Ctrl+滚轮调，Ctrl+0 复位，存 localStorage。
+   *
+   * 为什么绑在**收发区容器**上：绑 window 的话，在设置面板上滚也会改字号（用户会骂）。
+   * 为什么必须 preventDefault：不然浏览器会整页缩放（默认行为，最容易漏）。
+   */
+  var FONT_KEY = 'sb.consoleFontPx';
+  var FONT_MIN = 10, FONT_MAX = 28;
+  function currentFont() {
+    var saved = parseInt(localStorage.getItem(FONT_KEY) || '', 10);
+    return Number.isFinite(saved) ? saved : 13;
+  }
+  function applyFont(px) {
+    var size = Math.max(FONT_MIN, Math.min(FONT_MAX, px));
+    consoleEl.style.fontSize = size + 'px';
+    // 行高用 em 跟着字号走，否则字大了会挤在一起
+    consoleEl.style.lineHeight = '1.45em';
+    try { localStorage.setItem(FONT_KEY, String(size)); } catch (e) { /* 隐私模式 */ }
+    return size;
+  }
+  function setupFontZoom() {
+    applyFont(currentFont());
+    consoleEl.addEventListener('wheel', function (event) {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      applyFont(currentFont() + (event.deltaY < 0 ? 1 : -1));
+    }, { passive: false });
+    document.addEventListener('keydown', function (event) {
+      if (event.ctrlKey && (event.key === '0' || event.key === ')')) {
+        event.preventDefault();
+        applyFont(13);
+      }
+    });
+  }
+
   return {
     append: append,
     appendNote: appendNote,
@@ -138,5 +172,6 @@ export function createConsoleView(opts) {
     trimConsole: trimConsole,
     resetRx: resetRx,
     divider: divider,
+    setupFontZoom: setupFontZoom,
   };
 }
