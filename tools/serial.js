@@ -643,18 +643,18 @@ register({
         elapsedMs: { type: 'integer' },
       },
     },
-  },
-  render: (_args, value) => {
-    const head = [`<from>${value.from}</from>`, `<to>${value.to}</to>`, `<tx>${value.sent}</tx>`];
-    const body = value.receivedBytes
-      ? `${value.received}\n【hex】${value.receivedHex}`
-      : '(读侧一个字节都没收到)';
-    const lines = [...head, '<rx>', body, '</rx>'];
-    if (typeof value.matched === 'boolean') {
-      lines.push(`<matched>${value.matched ? '是（读到了期望内容）' : '否（没读到期望内容）'}</matched>`);
-    }
-    lines.push(`<elapsed_ms>${value.elapsedMs}</elapsed_ms>`);
-    return [{ type: 'text', text: lines.join('\n') }];
+    render: (_args, value) => {
+      const head = [`<from>${value.from}</from>`, `<to>${value.to}</to>`, `<tx>${value.sent}</tx>`];
+      const body = value.receivedBytes
+        ? `${value.received}\n【hex】${value.receivedHex}`
+        : '(读侧一个字节都没收到)';
+      const lines = [...head, '<rx>', body, '</rx>'];
+      if (typeof value.matched === 'boolean') {
+        lines.push(`<matched>${value.matched ? '是（读到了期望内容）' : '否（没读到期望内容）'}</matched>`);
+      }
+      lines.push(`<elapsed_ms>${value.elapsedMs}</elapsed_ms>`);
+      return [{ type: 'text', text: lines.join('\n') }];
+    },
   },
   isConcurrencySafe: () => false,
   async execute(args) {
