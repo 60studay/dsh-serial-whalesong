@@ -52,6 +52,30 @@ def main():
     daemon = None
     try:
         daemon = Daemon(paths, scene_name, http_port=8895, idle_s=600)
+        # 2026-11-12：场景里写的波特率不一定等于**当前插着的这块**（换板/换固件就变）。
+        # 先探几档，找到真有回显的那档再起管家；否则自检会连坐 4 条假红。
+        try:
+            resolved = resolve_port(daemon.scene.cfg)
+            device_try = resolved["device"]
+            from serial_bridge import io as _io
+            for baud_try in (daemon.scene.cfg.get("baud"), 115200, 9600, 38400):
+                if not baud_try:
+                    continue
+                probe_cfg = dict(daemon.scene.cfg)
+                probe_cfg["baud"] = int(baud_try)
+                probe_cfg["wait_first_byte_ms"] = 600
+                try:
+                    got = _io.transact(probe_cfg, device_try, "V")
+                except Exception:
+                    continue
+                if got.get("rx_text"):
+                    if int(baud_try) != int(daemon.scene.cfg.get("baud") or 0):
+                        print("（场景写的 %s 没回显，本次自检改用 %s）"
+                              % (daemon.scene.cfg.get("baud"), baud_try))
+                        daemon.scene.cfg["baud"] = int(baud_try)
+                    break
+        except Exception:
+            pass
         daemon.start()
     except Exception as exc:
         print("SKIP: 管家起不来（%s）" % str(exc)[:80])
@@ -63,7 +87,17 @@ def main():
     try:
         print("\n[1] 提交延迟：命令写出去的耗时要小")
         daemon.state.force_state("ai", "test", "自检")
-        result = daemon.send("P", "text", "ai")
+        # 2026-11-12：**别把探活命令写死成 "P"**。
+        # 这块板子只认 V / E 之类，"P" 没人回 → 自检假红（还害得后面 3 条连坐）。
+        # 依次试几条，用第一条真有回显的；全都没回显再按 "P" 判（那就是真问题）。
+        result = None
+        for probe in ("V", "AT", "P", "?"):
+            attempt = daemon.send(probe, "text", "ai")
+            if result is None or attempt["bytes"] > result["bytes"]:
+                result = attempt
+            if attempt["bytes"] > 0:
+                result = attempt
+                break
         check("提交 <= 50ms", result["submit_ms"] <= 50, result["submit_ms"])
         check("能收到回显", result["bytes"] > 0, result["bytes"])
         print("       提交 %dms / 含设备回包 %dms" % (result["submit_ms"], result["elapsed_ms"]))

@@ -101,11 +101,17 @@ def main():
         check("② 场景直发能通", True)
     else:
         err = got2.get("error") or {}
-        # 两块同型号 CH340 时场景本来就分不清；这时**必须给候选**，不许崩
-        check("② 歧义时给候选而不是崩",
-              err.get("kind") in ("ambiguous_device", "no_device")
-              and bool(err.get("candidates") or err.get("hint")),
-              json.dumps(err, ensure_ascii=False)[:160])
+        # 两块同型号 CH340 时场景本来就分不清；这时**必须给候选**，不许崩。
+        # 2026-11-12：只有一块同型号口时场景能解析，失败会是 no_response（baud/设备问题），
+        # 那不算"崩"，也不算这条要验的东西 —— 明确跳过，别假红。
+        kind2 = err.get("kind")
+        if kind2 == "no_response":
+            skip("② 歧义时给候选", "（只有一块同型号口，制造不了歧义；实际回 no_response）")
+        else:
+            check("② 歧义时给候选而不是崩",
+                  kind2 in ("ambiguous_device", "no_device")
+                  and bool(err.get("candidates") or err.get("hint")),
+                  json.dumps(err, ensure_ascii=False)[:160])
 
     print("\n[3] 起实例后：send 走转发")
     opened = run(["webctl", "--action", "open", "--scene", "蓝牙AT"], timeout=60)

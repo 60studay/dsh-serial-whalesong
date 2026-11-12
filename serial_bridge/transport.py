@@ -109,6 +109,23 @@ class SerialTransport(Transport):
         except Exception:
             pass
 
+        # 1.93 的真凶（2026-11-12 复验）：**打开瞬间** pyserial 会先拉一下 DTR，
+        # 板子被复位；紧接着我们写第一条命令，板子的 UART 还没稳 → 线上出现一个
+        # 坏字节（实测板子回 `ERR CMD \x00`，第 2 条起就正常）。
+        # 打开后先丢掉这段垃圾、再等一小会儿，让板子起来。
+        settle_ms = int(self.cfg.get("open_settle_ms", 60) or 0)
+        try:
+            port.reset_input_buffer()
+        except Exception:
+            pass
+        if settle_ms > 0:
+            import time as _time
+            _time.sleep(settle_ms / 1000.0)
+            try:
+                port.reset_input_buffer()      # 复位期间板子可能吐启动字符
+            except Exception:
+                pass
+
         self._port = port
         self.baud = baud_rate
         return self
