@@ -13,6 +13,7 @@ import time
 
 from . import io as serial_io
 from .errors import BridgeError
+from .locking import port_lock
 from .state import STATE_AI
 
 
@@ -170,37 +171,54 @@ class PortManager(object):
             value = {"owner": "unknown", "device": "", "detail": "串口未解析出来"}
             self._port_owner_cache = {"at": now, "value": value}
             return value
+        # 1.93：**探测也必须拿跨进程锁**。
+        # 以前这里只拿进程内的 loop.port_lock，和 CLI/会话/管家的发送**不互斥**：
+        # 页面在跑时，探测正好在两次发送之间 open 一次口 → 线上多出几个垃圾字节 →
+        # 板子把第一条命令当成乱码（实测第 1 条 `ERR CMD <0xE0>`，第 2 条才对）。
+        # 拿不到锁就**跳过这一轮**，绝不阻塞发送。
+        lock = port_lock(self.effective_cfg(), device, timeout_s=0.15)
         try:
-            with self.loop.port_lock:
+            lock.__enter__()
+        except BridgeError:
+            value = {"owner": "unknown", "device": device,
+                     "detail": "有一个正在进行的收发占着锁，本轮不探测"}
+            self._port_owner_cache = {"at": now, "value": value}
+            return value
+        try:
+            try:
                 serial_io.open_and_check(self.effective_cfg())
-            value = {"owner": "free", "device": device, "detail": "%s 空闲，可用" % device}
-        except BridgeError as exc:
-            if exc.kind == "port_busy":
-                # 1.68：把“被占用”变成可读状态：从何时起、多久了、是不是"有人绕过插件"。
-                now2 = time.time()
-                if not self._owner_since:
-                    self._owner_since = now2
-                seconds = int(now2 - self._owner_since)
-                last = float(getattr(self.loop, "last_activity_at", 0.0) or 0.0)
-                self._owner_last = {
-                    "device": device,
-                    "bypass_suspect": bool(last < self._owner_since),
-                }
-                value = {
-                    "owner": "other",
-                    "device": device,
-                    "detail": "被其他程序占用（串口助手 / 别的脚本 / 另一个终端工具）",
-                    "since": int(self._owner_since),
-                    "seconds": seconds,
-                    "process_name": "未知（Windows 不提供占用进程名）",
-                    # 我们这边在这段时间里**没有任何收发** → 很可能是有人绕过插件直接开了口
-                    "bypass_suspect": bool(last < self._owner_since),
-                }
-            else:
-                value = {"owner": "unknown", "device": device, "detail": exc.message}
+                value = {"owner": "free", "device": device,
+                         "detail": "%s 空闲，可用" % device}
+            except BridgeError as exc:
+                if exc.kind == "port_busy":
+                    # 1.68：把"被占用"变成可读状态：从何时起、多久了、是不是有人绕过插件
+                    now2 = time.time()
+                    if not self._owner_since:
+                        self._owner_since = now2
+                    seconds = int(now2 - self._owner_since)
+                    last = float(getattr(self.loop, "last_activity_at", 0.0) or 0.0)
+                    self._owner_last = {
+                        "device": device,
+                        "bypass_suspect": bool(last < self._owner_since),
+                    }
+                    value = {
+                        "owner": "other",
+                        "device": device,
+                        "detail": "被其他程序占用（串口助手 / 别的脚本 / 另一个终端工具）",
+                        "since": int(self._owner_since),
+                        "seconds": seconds,
+                        "process_name": "未知（Windows 不提供占用进程名）",
+                        "bypass_suspect": bool(last < self._owner_since),
+                    }
+                else:
+                    value = {"owner": "unknown", "device": device, "detail": exc.message}
+        finally:
+            try:
+                lock.__exit__(None, None, None)
+            except Exception:
+                pass
         if value.get("owner") != "other":
-            # 1.69：刚放开时把"占了多久 / 有没有人绕过插件"留在结果里，
-            # 页面据此在状态轨道写一行「串口已释放（占用 X 分 Y 秒）」。
+            # 1.69：刚放开时把"占了多久 / 有没有人绕过插件"留在结果里
             if self._owner_since:
                 value["released_after"] = int(time.time() - self._owner_since)
                 value["released_bypass"] = bool(self._owner_last.get("bypass_suspect"))
